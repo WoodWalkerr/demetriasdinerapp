@@ -1,0 +1,16 @@
+{
+  "name": "demetrias-diner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Demetria's Diner website with online ordering, PayMongo payments, POS and staff admin.",
+  "scripts": {
+    "db:init": "node scripts/init-db.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}

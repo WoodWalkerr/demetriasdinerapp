@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Demetria's Diner · Matcha, Coffee, Milk Tea &amp; Food</title>
+<meta name="description" content="Demetria's Diner: espresso and coffee, boba tea, G-Matcha, fruit lattes, fruit sodas and diner food classics. Come for the drinks, stay for the comfort.">
+<meta property="og:title" content="Demetria's Diner">
+<meta property="og:description" content="Come for the drinks, stay for the comfort. Order online for pickup.">
+<meta name="theme-color" content="#066B23">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='19' fill='%23066B23'/%3E%3Cpath d='M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z' fill='%23111'/%3E%3Ccircle cx='16.2' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3Ccircle cx='23.8' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+</head>
+<body>
+<header>
+  <div class="wrap nav">
+    <a class="logo" href="#top" aria-label="Demetria's Diner home">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--matcha)"/><path d="M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z" fill="#111"/><circle cx="16.2" cy="21.5" r="2.6" fill="#FFF9E8"/><circle cx="23.8" cy="21.5" r="2.6" fill="#FFF9E8"/></svg>
+      <span>demetria's<br><small>diner</small></span>
+    </a>
+    <ul>
+      <li><a href="#menu">Menu</a></li>
+      <li><a href="#how">How to order</a></li>
+      <li><a href="#visit">Visit</a></li>
+    </ul>
+    <div class="nav-actions"><button class="btn" id="orderBtn" type="button">Order ahead</button></div>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" data-mode="matcha" id="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <p class="eyebrow">Espresso · Boba · G-Matcha · Diner food</p>
+        <h1 style="margin-top:18px">Come for the drinks, <em>stay for the comfort.</em></h1>
+        <p class="hero-lede">Coffee, boba tea, G-Matcha, fruit lattes and fruit sodas, plus silog plates, sizzling sisig and diner classics. Order ahead and pay with GCash or Maya.</p>
+        <p class="deliv-note" id="heroDeliv" hidden>🛵 <b>Delivery available</b> <span id="heroDelivT"></span> · choose <b>Delivery</b> in your cart</p>
+        <div class="switch" role="group" aria-label="Pick a drink">
+          <button id="sw-matcha" data-mode="matcha" aria-pressed="true" style="--sw:#6BA436"><i class="dot"></i>G-Matcha</button>
+          <button id="sw-coffee" data-mode="coffee" aria-pressed="false" style="--sw:#8B5A3C"><i class="dot"></i>Coffee</button>
+          <button id="sw-milktea" data-mode="milktea" aria-pressed="false" style="--sw:#B98756"><i class="dot"></i>Boba</button>
+        </div>
+        <div class="now" aria-live="polite">
+          <b id="now-name">Strawberry Matcha</b><span id="now-price">₱149</span><button class="add" id="heroAdd" type="button">Add to order +</button>
+          <p id="now-note">From our G-Matcha line. Served over ice.</p>
+        </div>
+      </div>
+
+      <div class="stage" id="stage" style="--c1:#6BA436;--c2:#F09AA8;--blob:#CFE3A8;--straw:#111111">
+        <div class="blob"></div>
+        <svg class="ring" viewBox="0 0 400 432" aria-hidden="true">
+          <defs><path id="circ" d="M200 216 m-176 0 a176 176 0 1 1 352 0 a176 176 0 1 1 -352 0"/></defs>
+          <text><textPath href="#circ">freshly made · demetria's diner · freshly made · demetria's diner · </textPath></text>
+        </svg>
+        <svg class="cup" viewBox="0 0 400 432" role="img" aria-label="Animated iced drink">
+          <defs>
+            <clipPath id="cupClip"><path d="M112 118 H288 L268 378 Q266 394 250 394 H150 Q134 394 132 378 Z"/></clipPath>
+          </defs>
+          <rect class="straw" x="214" y="26" width="18" height="300" rx="9" transform="rotate(9 223 176)"/>
+          <g clip-path="url(#cupClip)">
+            <g class="liquid">
+              <path class="l-wave back" id="w1"/>
+              <path class="l-wave" id="w2"/>
+              <rect class="liq-base" x="80" y="186" width="240" height="240"/>
+              <path class="l-milk" id="w3"/>
+              <g class="boba" id="boba"></g>
+              <g id="bubbles"></g>
+            </g>
+            <rect class="ice" x="148" y="160" width="46" height="46" rx="8" transform="rotate(-12 171 183)"/>
+            <rect class="ice" x="200" y="150" width="50" height="50" rx="8" transform="rotate(14 225 175)"/>
+            <rect class="ice" x="168" y="212" width="42" height="42" rx="8" transform="rotate(6 189 233)"/>
+          </g>
+          <path class="glass" d="M112 118 H288 L268 378 Q266 394 250 394 H150 Q134 394 132 378 Z"/>
+          <path class="lid" d="M102 118 H298"/>
+          <path class="glass-hi" d="M128 140 L144 360"/>
+          <g class="cat" aria-hidden="true">
+            <path class="cat-body" d="M128 150 Q124 104 138 84 L134 52 L160 72 Q176 66 192 72 L216 52 L212 86 Q226 106 220 150 Z"/>
+            <g class="cat-eyes"><circle cx="157" cy="104" r="12" class="cat-eye"/><circle cx="193" cy="104" r="12" class="cat-eye"/>
+              <circle cx="159" cy="106" r="6" class="cat-pupil"/><circle cx="195" cy="106" r="6" class="cat-pupil"/></g>
+            <path d="M172 120 l3 3 l3 -3" class="cat-nose"/>
+            <ellipse cx="146" cy="121" rx="12" ry="8" class="cat-body"/><ellipse cx="204" cy="121" rx="12" ry="8" class="cat-body"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track" id="marq"></div>
+  </div>
+
+  <section id="menu">
+    <div class="wrap">
+      <div class="sec-head">
+        <h2>The menu</h2>
+        <p>Coffee, matcha, pistachio and boba drinks, silog meals, snacks and pastries. Hover a cup to take a sip, then tap Add to choose sweetness, ice and add-ons.</p>
+      </div>
+      <div class="status-bar" id="statusBar" hidden></div>
+      <div class="again-bar" id="againBar" hidden></div>
+      <div class="filters" role="group" aria-label="Filter menu">
+        <button id="f-all" data-f="all" aria-pressed="true">All</button>
+        <button id="f-coffee" data-f="coffee" aria-pressed="false">Espresso &amp; Coffee</button>
+        <button id="f-boba" data-f="boba" aria-pressed="false">Boba Tea</button>
+        <button id="f-matcha" data-f="matcha" aria-pressed="false">G-Matcha</button>
+        <button id="f-favorite" data-f="favorite" aria-pressed="false">Diner's Favorite</button>
+        <button id="f-fruitlatte" data-f="fruitlatte" aria-pressed="false">Fruit Latte</button>
+        <button id="f-soda" data-f="soda" aria-pressed="false">Fruit Soda</button>
+        <button id="f-food" data-f="food" aria-pressed="false">Food Classics</button>
+      </div>
+      <div class="grid" id="grid"></div>
+
+    </div>
+  </section>
+
+  <section class="ritual" id="how">
+    <div class="wrap ritual-grid">
+      <div class="bowl-stage">
+        <svg viewBox="0 0 400 400" role="img" aria-label="A black cat peeking out of a big coffee cup">
+          <circle cx="200" cy="200" r="190" fill="var(--bg)"/>
+          <path class="steam-l" d="M150 92 q-12 -16 0 -32 q12 -16 0 -32 M200 84 q-12 -16 0 -32 q12 -16 0 -32 M250 92 q-12 -16 0 -32 q12 -16 0 -32" fill="none" stroke="var(--muted)" stroke-width="5" stroke-linecap="round"/>
+          <path d="M300 170 q62 -6 62 54 q0 62 -74 74" fill="none" stroke="var(--ink)" stroke-width="12" stroke-linecap="round"/>
+          <path d="M70 150 H310 L292 300 Q286 344 240 344 H140 Q94 344 88 300 Z" fill="var(--card)" stroke="var(--ink)" stroke-width="6" stroke-linejoin="round"/>
+          <g class="big-cat">
+            <path d="M126 152 Q120 98 140 74 L134 34 L170 60 Q200 52 230 60 L266 34 L260 74 Q280 98 274 152 Z" fill="#111"/>
+            <g class="cat-eyes"><circle cx="172" cy="108" r="20" fill="#FFF9E8"/><circle cx="228" cy="108" r="20" fill="#FFF9E8"/>
+              <circle cx="175" cy="111" r="11" fill="#111"/><circle cx="231" cy="111" r="11" fill="#111"/></g>
+            <path d="M194 132 l6 5 l6 -5" fill="none" stroke="#FFF9E8" stroke-width="3" stroke-linecap="round"/>
+          </g>
+          <ellipse cx="200" cy="152" rx="122" ry="14" fill="none" stroke="var(--ink)" stroke-width="6"/>
+          <ellipse cx="150" cy="156" rx="18" ry="11" fill="#111"/><ellipse cx="250" cy="156" rx="18" ry="11" fill="#111"/>
+          <text x="200" y="262" text-anchor="middle" class="cup-word">demetria's</text>
+        </svg>
+      </div>
+      <div>
+        <p class="eyebrow">Order ahead</p>
+        <h2 class="band-title" style="margin:14px 0 26px">How to order</h2>
+        <ol class="steps">
+          <li><span class="n">1</span><div><h3>Pick your drinks</h3><p>Coffee, boba tea, G-Matcha, Diner's Favorites, fruit lattes and fruit sodas, from <span class="u">₱99</span>.</p></div></li>
+          <li><span class="n">2</span><div><h3>Set sweetness &amp; ice</h3><p>Choose <span class="u">0–100%</span> sweet and no ice up to extra ice.</p></div></li>
+          <li><span class="n">3</span><div><h3>Pay your way</h3><p>GCash, Maya or card online, or pay at the counter when you pick up.</p></div></li>
+          <li><span class="n">4</span><div><h3>Pick it up</h3><p>We call your order code, like <span class="u">#D4XE</span>, when it's ready.</p></div></li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section id="visit">
+    <div class="wrap visit-grid">
+      <div class="panel dark">
+        <p class="eyebrow">Come for the drinks</p>
+        <h2>Stay for the comfort.</h2>
+        <p>Order online for pickup or delivery, now or ahead for later, and pay with GCash, Maya or card, or at the counter. Message us on Facebook for big orders.</p>
+        <button class="btn" type="button" id="visitOrder">Start an order</button>
+      </div>
+      <div class="panel light">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <h3 style="font-size:28px">Hours</h3>
+          <span class="open-pill" id="open"><i></i><span id="open-t">Hours</span></span>
+        </div>
+        <table class="hours" id="hours"></table>
+        <div class="special-list" id="specialList" hidden></div>
+        <div class="contact">
+          <div><span>Facebook</span><br><a href="https://www.facebook.com/demetriasblngsn" target="_blank" rel="noopener">facebook.com/demetriasblngsn</a></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="big-word" aria-hidden="true">demetria's</div>
+    <div class="foot">
+      <span>© 2026 Demetria's Diner</span>
+      <span>Come for the drinks, stay for the comfort.</span>
+    </div>
+  </div>
+</footer>
+
+<button class="fab" id="fab" type="button" aria-label="Open your order">Your order <b id="fabCount">0</b></button>
+<div class="scrim" id="scrim"></div>
+
+<aside class="drawer" id="drawer" aria-label="Your order" inert>
+  <div class="d-head"><h2>Your order</h2><button class="x" type="button" id="drawerClose" aria-label="Close">×</button></div>
+  <form class="d-body" id="orderForm" novalidate>
+    <div class="lines" id="lines"></div>
+    <fieldset class="otype" id="oType" hidden>
+      <legend>How do you want it?</legend>
+      <input type="radio" name="otype" id="ot-pickup" value="pickup" checked><label for="ot-pickup"><b>Pickup</b><small>at the counter</small></label>
+      <input type="radio" name="otype" id="ot-delivery" value="delivery"><label for="ot-delivery"><b>Delivery</b><small id="otDeliverySub">to your door</small></label>
+    </fieldset>
+    <div class="field"><label for="o-name" id="o-name-l">Name for pickup</label><input id="o-name" maxlength="40" autocomplete="given-name" placeholder="e.g. Mika"></div>
+    <div class="field" id="whenF"><label for="o-when">When</label>
+      <select id="o-when"><option value="now">As soon as possible</option><option value="later">Order ahead: choose a day and time</option></select></div>
+    <div class="row2" id="whenPick" hidden>
+      <div class="field"><label for="o-day">Day</label><select id="o-day"></select></div>
+      <div class="field"><label for="o-time">Time</label><select id="o-time"></select></div>
+    </div>
+    <p class="when-note" id="whenNote" hidden></p>
+    <div class="field" id="pickupF"><label for="o-pickup">Ready in</label>
+      <select id="o-pickup"><option value="10">ASAP (~10 min)</option><option value="20">In 20 min</option><option value="30">In 30 min</option><option value="45">In 45 min</option><option value="60">In 1 hour</option></select></div>
+    <div class="deliv" id="delivF" hidden>
+      <button class="btn ghost pin-btn" type="button" id="pinBtn">📍 Set delivery location on the map</button>
+      <p class="pin-info" id="pinInfo"></p>
+      <div class="field"><label for="d-address">Address</label><input id="d-address" maxlength="200" autocomplete="street-address" placeholder="House no., street, barangay"></div>
+      <div class="row2">
+        <div class="field"><label for="d-landmark">Landmark (optional)</label><input id="d-landmark" maxlength="120" placeholder="e.g. near the chapel"></div>
+        <div class="field"><label for="d-phone">Mobile number</label><input id="d-phone" maxlength="20" inputmode="tel" autocomplete="tel" placeholder="0917 123 4567"></div>
+      </div>
+    </div>
+    <fieldset class="paygrid" id="payGrid">
+      <legend>Payment</legend>
+      <input type="radio" name="pay" id="pay-qrph" value="qrph" checked><label for="pay-qrph"><span class="pm-logo pm-qr">QR</span><b>GCash / Maya</b><small>Scan our QR</small></label>
+      <input type="radio" name="pay" id="pay-gcash" value="gcash"><label for="pay-gcash"><span class="pm-logo pm-gcash">G</span><b>GCash</b><small>Pay now</small></label>
+      <input type="radio" name="pay" id="pay-paymaya" value="paymaya"><label for="pay-paymaya"><span class="pm-logo pm-maya">M</span><b>Maya</b><small>Pay now</small></label>
+      <input type="radio" name="pay" id="pay-card" value="card"><label for="pay-card"><span class="pm-logo pm-card">▭</span><b>Card</b><small>Visa · Mastercard</small></label>
+      <input type="radio" name="pay" id="pay-counter" value="counter"><label for="pay-counter"><span class="pm-logo pm-counter">₱</span><b>At counter</b><small>Cash on pickup</small></label>
+    </fieldset>
+    <div class="field"><label for="o-note">Note for the barista</label><textarea id="o-note" maxlength="200" placeholder="Allergies, extra hot, name on cup…"></textarea></div>
+    <div class="mine" id="mine" hidden></div>
+  </form>
+  <div class="d-foot">
+    <dl class="sums" id="sums" hidden><dt>Subtotal</dt><dd id="subTotal">₱0</dd><dt>Delivery fee</dt><dd id="feeTotal">₱0</dd></dl>
+    <div class="total">Total <span id="total">₱0</span></div>
+    <button class="btn" type="submit" form="orderForm" id="placeBtn" disabled>Place order</button>
+    <p class="note" id="orderNote" role="status"></p>
+  </div>
+</aside>
+
+<dialog id="optDlg" aria-labelledby="optTitle">
+  <form method="dialog" class="dlg" id="optForm">
+    <div><p class="eyebrow" id="optCat">G-Matcha</p><h3 id="optTitle" style="margin-top:8px">Strawberry Matcha</h3></div>
+    <div class="grp" id="g-sweet"><h4>Sweetness</h4><div class="seg">
+      <input type="radio" name="sweet" id="s0" value="0"><label for="s0">0%</label>
+      <input type="radio" name="sweet" id="s25" value="25"><label for="s25">25%</label>
+      <input type="radio" name="sweet" id="s50" value="50"><label for="s50">50%</label>
+      <input type="radio" name="sweet" id="s75" value="75" checked><label for="s75">75%</label>
+      <input type="radio" name="sweet" id="s100" value="100"><label for="s100">100%</label></div></div>
+    <div class="grp" id="g-ice"><h4>Ice</h4><div class="seg">
+      <input type="radio" name="ice" id="i0" value="No ice"><label for="i0">No ice</label>
+      <input type="radio" name="ice" id="i1" value="Less ice"><label for="i1">Less</label>
+      <input type="radio" name="ice" id="i2" value="Regular ice" checked><label for="i2">Regular</label>
+      <input type="radio" name="ice" id="i3" value="Extra ice"><label for="i3">Extra</label></div></div>
+    <div id="addonGroups"></div>
+    <div class="dlg-foot">
+      <div class="stepper"><button type="button" id="qMinus" aria-label="Fewer">−</button><span id="qVal">1</span><button type="button" id="qPlus" aria-label="More">+</button></div>
+      <div style="display:flex;gap:8px"><button class="btn ghost" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn" type="button" id="optAdd">Add ₱149</button></div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="qrDlg" aria-labelledby="qrTitle">
+  <form class="dlg qr-pay" id="qrForm" novalidate>
+    <div class="qr-head">
+      <div><p class="eyebrow" id="qrCode">Order #D000</p><h3 id="qrTitle" style="margin-top:8px">Pay with GCash or Maya</h3></div>
+      <button class="x" type="button" id="qrClose" aria-label="Close">×</button>
+    </div>
+    <div class="qr-amount"><span>Send exactly</span><b id="qrAmount">₱0</b></div>
+    <img id="qrImg" class="qr-img" alt="Demetria's Diner GCash QR code" src="data:,">
+    <dl class="qr-acct"><dt>Account name</dt><dd id="qrName">—</dd><dt>Number</dt><dd><span id="qrNum">—</span> <button type="button" class="linkbtn" id="qrCopy">Copy</button></dd></dl>
+    <ol class="qr-steps">
+      <li>Open <b>GCash</b> or <b>Maya</b> and choose <b>Pay QR</b> / <b>Scan</b>.</li>
+      <li>On this phone? Take a screenshot of the QR, then use <b>Upload QR</b> from your gallery.</li>
+      <li>Pay the exact amount, then type the <b>reference number</b> from your receipt below.</li>
+    </ol>
+    <div class="field"><label for="qrRef">Reference number</label><input id="qrRef" inputmode="numeric" autocomplete="off" maxlength="30" placeholder="e.g. 1234 567 891234"></div>
+    <button class="btn" type="submit" id="qrSend" style="justify-content:center">I've paid · send reference</button>
+    <p class="note" id="qrNote" role="status"></p>
+  </form>
+</dialog>
+
+
+
+<dialog id="mapDlg" class="map-dlg" aria-labelledby="mapTitle">
+  <div class="dlg">
+    <div class="qr-head"><div><p class="eyebrow">Delivery</p><h3 id="mapTitle" style="margin-top:8px">Drop a pin on your place</h3></div>
+      <button class="x" type="button" id="mapClose" aria-label="Close">×</button></div>
+    <div class="map" id="map"><p class="map-loading">Loading map…</p></div>
+    <p class="hint-sm">Tap the map or drag the pin to your door. Distance is measured in a straight line from our store.</p>
+    <div class="map-foot">
+      <button class="btn ghost" type="button" id="locBtn">Use my location</button>
+      <div class="map-quote" id="mapQuote">—</div>
+      <button class="btn" type="button" id="mapOk" disabled>Use this spot</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/js/site.js" defer></script>
+</body>
+</html>

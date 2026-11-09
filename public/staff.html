@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Demetria's Diner · Staff</title>
+<meta name="robots" content="noindex">
+<meta name="description" content="Demetria's Diner staff admin.">
+<meta property="og:title" content="Demetria's Diner">
+<meta property="og:description" content="Matcha, coffee, milk tea and food. Order online for pickup.">
+<meta name="theme-color" content="#066B23">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='19' fill='%23066B23'/%3E%3Cpath d='M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z' fill='%23111'/%3E%3Ccircle cx='16.2' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3Ccircle cx='23.8' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<script>try{var t=localStorage.getItem("dd-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body class="staff-page">
+<main class="login" id="loginView" hidden>
+  <form id="loginForm">
+    <a class="logo" href="/" aria-label="Demetria's Diner home">
+      <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--matcha)"/><path d="M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z" fill="#111"/><circle cx="16.2" cy="21.5" r="2.6" fill="#FFF9E8"/><circle cx="23.8" cy="21.5" r="2.6" fill="#FFF9E8"/></svg>
+      <span>demetria's<br><small>staff</small></span>
+    </a>
+    <h1>Staff sign in</h1>
+    <div class="field"><label for="uname">Username</label><input id="uname" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+    <div class="field"><label for="pw">Password</label><input id="pw" type="password" autocomplete="current-password" required></div>
+    <button class="btn" type="submit" id="loginBtn">Sign in</button>
+    <p class="note" id="loginNote" role="status"></p>
+    <p class="hint">First time? Sign in as <b>admin</b> with the <b>STAFF_PASSWORD</b> from your settings. Then add your staff in <b>Users</b>.</p>
+  </form>
+</main>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="wrap topbar-in">
+      <a class="logo" href="/" target="_blank" rel="noopener" aria-label="Open the website">
+        <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--matcha)"/><path d="M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z" fill="#111"/><circle cx="16.2" cy="21.5" r="2.6" fill="#FFF9E8"/><circle cx="23.8" cy="21.5" r="2.6" fill="#FFF9E8"/></svg>
+        <span>demetria's<br><small>staff</small></span>
+      </a>
+      <nav class="tabs" aria-label="Sections">
+        <a href="#board" data-tab="board" data-perm="pos">Board <b class="badge" id="badge" hidden>0</b></a>
+        <a href="#pos" data-tab="pos" data-perm="pos">POS</a>
+        <a href="#orders" data-tab="orders" data-perm="pos">Orders</a>
+        <a href="#shift" data-tab="shift">Shift</a>
+        <a href="#products" data-tab="products" data-perm="pos">Products</a>
+        <a href="#sales" data-tab="sales" data-perm="sales">Dashboard <b class="badge" id="achBadge" hidden>★</b></a>
+        <a href="#finance" data-tab="finance" data-perm="finance">Finance</a>
+        <a href="#settings" data-tab="settings" data-perm="settings">Settings</a>
+        <a href="#users" data-tab="users" data-perm="users">Users</a>
+        <a href="#activity" data-tab="activity" data-perm="audit">Activity</a>
+      </nav>
+      <div class="top-actions">
+        <a class="shift-pill" href="#shift" id="shiftPill"><i></i><span id="shiftPillT">No shift</span></a>
+        <button class="msg-btn" type="button" id="themeBtn" aria-label="Switch light or dark mode" title="Light / dark mode">🌙</button>
+        <button class="msg-btn" type="button" id="msgBtn" aria-label="Customer messages">💬<b class="badge" id="msgBadge" hidden>0</b></button>
+        <div class="user-menu">
+          <button class="btn ghost" type="button" id="userBtn" aria-haspopup="true" aria-expanded="false"><span id="userName">Staff</span> ▾</button>
+          <div class="menu-pop" id="userPop" hidden>
+            <p class="hint" id="userRole"></p>
+            <div class="theme-pick" role="group" aria-label="Theme"><span>Theme</span>
+              <button type="button" data-theme-set="light">☀ Light</button><button type="button" data-theme-set="dark">🌙 Dark</button><button type="button" data-theme-set="auto">Auto</button></div>
+            <button type="button" id="pwBtn">Change my password</button>
+            <button type="button" id="logoutBtn">Sign out</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- BOARD -->
+  <section class="view" id="view-board" aria-label="Live order board">
+    <div class="wrap">
+      <div class="view-head">
+        <div><h1>Live orders</h1><p class="note left" id="syncNote"></p></div>
+        <label class="switchrow" for="soundToggle"><input type="checkbox" class="toggle" id="soundToggle" checked> Sound</label>
+      </div>
+      <div class="banner warn" id="shiftBanner" hidden>You haven't opened your shift. You can move orders, but to take payments <a href="#shift">open your shift</a>.</div>
+      <div class="banner" id="awaitBanner" hidden></div>
+      <div class="stats" id="stats"></div>
+      <div class="cols cols4" id="cols"></div>
+      <div class="box" style="margin-top:16px"><h3>Recently finished</h3><div class="done-list" id="doneList"></div></div>
+    </div>
+  </section>
+
+  <!-- POS -->
+  <section class="view" id="view-pos" aria-label="Point of sale" hidden>
+    <div class="wrap pos">
+      <div class="pos-menu">
+        <div class="view-head"><h1>New sale</h1><input class="pos-search" id="posSearch" type="search" placeholder="Search menu…" aria-label="Search menu"></div>
+        <div class="filters" role="group" aria-label="Category" id="posCats"></div>
+        <div class="pos-grid" id="posGrid"></div>
+      </div>
+      <form class="pos-ticket" id="posForm" novalidate>
+        <div class="pt-head"><h2>Ticket</h2><button class="linkbtn" type="button" id="posClear">Clear</button></div>
+        <div class="banner warn" id="posShiftBanner" hidden>Open your shift first. <a href="#shift">Go to Shift</a></div>
+        <div class="pt-lines" id="posLines"></div>
+        <div class="row2">
+          <div class="field"><label for="posName">Customer</label><input id="posName" maxlength="40" placeholder="Walk-in"></div>
+          <div class="field"><label for="posType">Type</label><select id="posType"><option value="dine-in">Dine-in</option><option value="takeout">Takeout</option></select></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label for="posDisc">Discount</label>
+            <select id="posDisc"><option value="">None</option><option value="senior">Senior citizen 20%</option><option value="pwd">PWD 20%</option><option value="staff">Staff 10%</option></select></div>
+          <div class="field" id="posDiscIdF" hidden><label for="posDiscId">ID number</label><input id="posDiscId" maxlength="40"></div>
+        </div>
+        <dl class="pt-sum" id="posSum"></dl>
+        <div id="posPay"></div>
+        <label class="switchrow" for="posBoard"><input type="checkbox" class="toggle" id="posBoard" checked> Send to kitchen board</label>
+        <button class="btn charge" type="submit" id="posCharge" disabled>Charge</button>
+        <p class="note" id="posNote" role="status"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- ORDERS -->
+  <section class="view" id="view-orders" aria-label="All orders" hidden>
+    <div class="wrap">
+      <div class="view-head"><h1>All orders</h1><p class="note left" id="histCount"></p></div>
+      <form class="filters-bar" id="histForm">
+        <div class="field grow"><label for="hq">Search</label><input id="hq" type="search" placeholder="Code, name or reference no."></div>
+        <div class="field"><label for="hsource">Source</label><select id="hsource"><option value="any">Any</option><option value="online">Online</option><option value="pos">POS</option></select></div>
+        <div class="field"><label for="htype">Type</label><select id="htype"><option value="any">Any</option><option value="pickup">Pickup</option><option value="delivery">Delivery</option><option value="dine-in">Dine-in</option><option value="takeout">Takeout</option></select></div>
+        <div class="field"><label for="hstatus">Status</label><select id="hstatus"><option value="any">Any</option><option value="open">Open</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></div>
+        <div class="field"><label for="hpay">Payment</label>
+          <select id="hpay"><option value="any">Any</option><option value="paid">Paid</option><option value="unpaid">Unpaid (counter)</option><option value="submitted">QR ref to check</option><option value="awaiting_proof">QR not paid yet</option><option value="rejected">QR not received</option><option value="voided">Voided</option><option value="refunded">Refunded</option><option value="expired">Expired</option>
+            <option disabled>──────</option><option value="cash">Cash</option><option value="qrph">GCash/Maya QR</option><option value="gcash">GCash</option><option value="paymaya">Maya</option><option value="card">Card</option><option value="split">Split</option><option value="counter">Counter</option></select></div>
+        <div class="field"><label for="hfrom">From</label><input id="hfrom" type="date"></div>
+        <div class="field"><label for="hto">To</label><input id="hto" type="date"></div>
+        <button class="btn ghost" type="button" id="hclear">Clear</button>
+      </form>
+      <div class="table-wrap">
+        <table class="otable">
+          <thead><tr><th>Time</th><th>Order</th><th>Customer</th><th>Items</th><th class="num">Total</th><th>Payment</th><th>Status</th><th>Staff</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+      <div class="pager"><button class="btn ghost" type="button" id="prevPg">← Newer</button><span id="pgInfo"></span><button class="btn ghost" type="button" id="nextPg">Older →</button></div>
+    </div>
+  </section>
+
+  <!-- SHIFT -->
+  <section class="view" id="view-shift" aria-label="Shift" hidden>
+    <div class="wrap">
+      <div class="view-head"><h1>My shift</h1></div>
+      <div id="shiftOpenBox" class="box shift-open" hidden>
+        <h3>Open your shift</h3>
+        <p class="hint">Count the cash in the drawer before you start.</p>
+        <form class="shift-form" id="openForm">
+          <div class="field"><label for="openCash">Opening cash (₱)</label><input id="openCash" type="number" inputmode="decimal" min="0" step="0.01" placeholder="e.g. 1000" required></div>
+          <button class="btn" type="submit">Open shift</button>
+        </form>
+      </div>
+      <div id="shiftLive" hidden>
+        <div class="stats tiles" id="shiftTiles"></div>
+        <div class="shift-grid">
+          <div class="box"><h3>By payment method</h3><dl class="kv2" id="shiftMethods"></dl></div>
+          <div class="box" data-perm-box="cash">
+            <h3>Cash in / Cash out</h3>
+            <form class="cash-form" id="cashForm">
+              <div class="seg2" role="group" aria-label="Type">
+                <input type="radio" name="ckind" id="ck-in" value="in"><label for="ck-in">Cash in</label>
+                <input type="radio" name="ckind" id="ck-out" value="out" checked><label for="ck-out">Cash out</label>
+              </div>
+              <div class="row2">
+                <div class="field"><label for="cAmt">Amount (₱)</label><input id="cAmt" type="number" inputmode="decimal" min="0.01" step="0.01" required></div>
+                <div class="field"><label for="cCat">Category</label><select id="cCat"></select></div>
+              </div>
+              <div class="field"><label for="cNote">Note</label><input id="cNote" maxlength="200" placeholder="e.g. 2 packs of cups from Puregold"></div>
+              <button class="btn" type="submit">Record</button>
+            </form>
+            <div class="moves" id="moves"></div>
+          </div>
+        </div>
+        <div class="box close-box">
+          <h3>Close shift</h3>
+          <p class="hint">Count all the cash in the drawer. Expected: <b id="expCash">₱0</b></p>
+          <form class="shift-form" id="closeForm">
+            <div class="field"><label for="countCash">Counted cash (₱)</label><input id="countCash" type="number" inputmode="decimal" min="0" step="0.01" required></div>
+            <div class="field grow"><label for="closeNote">Note (optional)</label><input id="closeNote" maxlength="300" placeholder="e.g. short ₱5 coins"></div>
+            <button class="btn danger" type="submit" id="closeBtn">Close shift</button>
+          </form>
+          <p class="note left" id="overShort"></p>
+        </div>
+      </div>
+      <div class="box" style="margin-top:16px"><h3 id="recentTitle">Recent shifts</h3>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Staff</th><th>Opened</th><th>Closed</th><th class="num">Opening</th><th class="num">Expected</th><th class="num">Counted</th><th class="num">Over / short</th><th></th></tr></thead><tbody id="shiftRows"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS -->
+  <section class="view" id="view-products" aria-label="Products and stock" hidden>
+    <div class="wrap">
+      <div class="view-head"><h1>Products &amp; stock</h1>
+        <div class="seg-tabs" role="group" aria-label="Section"><button type="button" data-ptab="items" aria-pressed="true">Products</button><button type="button" data-ptab="addons" aria-pressed="false">Add-ons</button><button type="button" data-ptab="log" aria-pressed="false">Stock log</button></div>
+      </div>
+      <div id="pt-items">
+        <div class="filters-bar">
+          <div class="field grow"><label for="pq">Search</label><input id="pq" type="search" placeholder="Product name"></div>
+          <div class="field"><label for="pcat">Category</label><select id="pcat"></select></div>
+          <label class="switchrow" for="plow"><input type="checkbox" class="toggle" id="plow"> Low / out of stock only</label>
+          <label class="switchrow cost-col" for="pnocost"><input type="checkbox" class="toggle" id="pnocost"> Missing cost only</label>
+        </div>
+        <div class="table-wrap"><table class="otable ptable"><thead><tr><th>Photo</th><th>Product</th><th>Category</th><th class="num">Price (₱)</th><th class="num cost-col">Cost (₱)</th><th class="num cost-col">Profit · margin</th><th>Available</th><th>Stock</th><th class="num">Low at</th><th></th></tr></thead><tbody id="prodRows"></tbody></table></div>
+        <form class="box add-form" id="addProdForm" data-perm-box="edit_prices">
+          <h3>Add a product</h3>
+          <div class="row4">
+            <div class="field"><label for="npName">Name</label><input id="npName" maxlength="60" required></div>
+            <div class="field"><label for="npCat">Category</label><select id="npCat"></select></div>
+            <div class="field"><label for="npPrice">Price (₱)</label><input id="npPrice" type="number" min="0" step="0.01" placeholder="empty = not for sale yet"></div>
+            <div class="field cost-col"><label for="npCost">Cost (₱)</label><input id="npCost" type="number" min="0" step="0.01" placeholder="optional"></div>
+            <button class="btn" type="submit">Add product</button>
+          </div>
+        </form>
+      </div>
+      <div id="pt-addons" hidden>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Add-on</th><th>Shows on</th><th class="num">Price (₱)</th><th class="num cost-col">Cost (₱)</th><th>Active</th><th></th></tr></thead><tbody id="addonRows"></tbody></table></div>
+        <form class="box add-form" id="addAddonForm" data-perm-box="edit_prices">
+          <h3>Add an add-on</h3>
+          <div class="row4">
+            <div class="field"><label for="naName">Name</label><input id="naName" maxlength="40" required></div>
+            <div class="field"><label for="naGrp">Shows on</label><select id="naGrp"><option value="drink">Drinks</option><option value="food">Food</option><option value="packaging">Everything (packaging)</option></select></div>
+            <div class="field"><label for="naPrice">Price (₱)</label><input id="naPrice" type="number" min="0" step="0.01" required></div>
+            <button class="btn" type="submit">Add add-on</button>
+          </div>
+        </form>
+      </div>
+      <div id="pt-log" hidden>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>When</th><th>Product</th><th class="num">Change</th><th class="num">Stock after</th><th>Reason</th><th>Staff</th></tr></thead><tbody id="logRows"></tbody></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DASHBOARD (sales performance) -->
+  <section class="view" id="view-sales" aria-label="Dashboard" hidden>
+    <div class="wrap">
+      <div class="view-head"><div><h1>Dashboard</h1><p class="note left" id="dashNote"></p></div></div>
+      <div class="ach-list" id="achList"></div>
+      <div class="period-cards" id="periodCards"></div>
+      <div class="box chart-box">
+        <div class="view-head" style="margin:0"><h3 id="chartTitle">Sales</h3>
+          <div class="seg-tabs" role="group" aria-label="Chart period">
+            <button type="button" data-gran="daily" aria-pressed="true">Daily</button><button type="button" data-gran="weekly" aria-pressed="false">Weekly</button><button type="button" data-gran="monthly" aria-pressed="false">Monthly</button>
+          </div></div>
+        <div class="chart" id="chart"></div>
+        <p class="chart-legend"><span class="lg bar"></span> Net sales <span class="lg rec"></span> Best ever <span class="lg cur"></span> Current period</p>
+        <details><summary>Show as table</summary><div class="table-wrap"><table class="otable" id="seriesTable"></table></div></details>
+      </div>
+      <div class="records" id="records"></div>
+      <div class="box" style="margin-top:16px"><h3>Best-selling products this month</h3><div class="table-wrap"><table class="otable"><thead id="topHead"></thead><tbody id="topRows"></tbody></table></div></div>
+
+      <div class="view-head" style="margin-top:26px">
+        <h2 class="sub-h">Breakdown</h2>
+        <div class="seg-tabs" role="group" aria-label="Date range">
+          <button type="button" data-range="today" aria-pressed="false">Today</button>
+          <button type="button" data-range="7d" aria-pressed="true">7 days</button>
+          <button type="button" data-range="30d" aria-pressed="false">30 days</button>
+        </div>
+      </div>
+      <div class="stats tiles" id="kpis"></div>
+      <div class="staff-lower">
+        <div class="box"><h3>By payment method</h3><div class="hbars" id="byMethod"></div><h3 style="margin-top:22px">Online vs POS</h3><div class="hbars" id="bySource"></div></div>
+        <div class="box"><h3>By staff</h3><div class="hbars" id="byStaff"></div><h3 style="margin-top:22px">Top add-ons</h3><div class="hbars" id="topAddons"></div></div>
+        <div class="box"><h3>Best sellers</h3><div class="hbars" id="topItems"></div></div>
+      </div>
+      <div class="box export-box">
+        <div><h3>Monthly export</h3><p class="hint">CSV files that open in Excel or Google Sheets.</p></div>
+        <div class="export-row">
+          <div class="field"><label for="exMonth">Month</label><input id="exMonth" type="month"></div>
+          <a class="btn" data-ex="daily" href="#">Daily summary</a>
+          <a class="btn ghost" data-ex="shifts" href="#">Shifts</a>
+          <a class="btn ghost" data-ex="orders" href="#">All orders</a>
+          <a class="btn ghost" data-ex="items" href="#">Item sales</a>
+          <a class="btn ghost" data-ex="cash" href="#">Cash in/out</a>
+          <a class="btn ghost" data-ex="stock" href="#">Stock log</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINANCE (monthly costing & liquidation) -->
+  <section class="view" id="view-finance" aria-label="Finance" hidden>
+    <div class="wrap">
+      <div class="view-head"><h1>Costing &amp; liquidation</h1>
+        <div class="fin-month"><button class="x sm" type="button" id="finPrev" aria-label="Previous month">‹</button><input id="finMonth" type="month" aria-label="Month"><button class="x sm" type="button" id="finNext" aria-label="Next month">›</button></div>
+      </div>
+      <p class="hint" id="finCoverage"></p>
+      <div class="period-cards" id="finCards"></div>
+      <div class="fin-grid">
+        <div class="box statement" id="finStatement"></div>
+        <div class="box">
+          <h3>Record an expense</h3>
+          <form class="exp-form" id="expForm" novalidate>
+            <div class="row2">
+              <div class="field"><label for="exDate">Date</label><input id="exDate" type="date" required></div>
+              <div class="field"><label for="exAmt">Amount (₱)</label><input id="exAmt" type="number" inputmode="decimal" min="0.01" step="0.01" required></div>
+            </div>
+            <div class="field"><label for="exCat">Category</label><select id="exCat"></select></div>
+            <div class="field"><label for="exDesc">Description</label><input id="exDesc" maxlength="200" placeholder="e.g. Meralco bill October, 10 kg milk powder"></div>
+            <div class="field"><label for="exRef">Receipt / reference no. (optional)</label><input id="exRef" maxlength="60"></div>
+            <button class="btn" type="submit">Add expense</button>
+            <p class="hint">Shift <b>cash outs</b> are included automatically. Don't record them again here.</p>
+          </form>
+        </div>
+      </div>
+      <div class="box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>Expenses this month</h3><span class="hint" id="expCount"></span></div>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="num">Amount</th><th>Source</th><th>By</th><th></th></tr></thead><tbody id="expRows"></tbody></table></div>
+      </div>
+      <div class="box" style="margin-top:16px">
+        <h3>Product profitability this month</h3>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Product</th><th class="num">Sold</th><th class="num">Revenue</th><th class="num">Cost of goods</th><th class="num">Profit</th><th class="num">Margin</th></tr></thead><tbody id="profRows"></tbody></table></div>
+      </div>
+      <div class="box export-box">
+        <div><h3>Download</h3><p class="hint">For your records or your accountant.</p></div>
+        <div class="export-row">
+          <a class="btn" data-fx="liquidation" href="#">Liquidation report</a>
+          <a class="btn ghost" data-fx="expenses" href="#">Expenses</a>
+          <a class="btn ghost" data-fx="profit" href="#">Product profit</a>
+          <button class="btn ghost" type="button" id="finPrint">Print report</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings" aria-label="Settings" hidden>
+    <div class="wrap">
+      <div class="view-head"><h1>Settings</h1></div>
+      <div class="settings-grid">
+        <div class="box">
+          <h3>Online ordering</h3>
+          <label class="switchrow" for="acceptToggle"><input type="checkbox" class="toggle" id="acceptToggle" checked> Taking online orders</label>
+          <p class="hint">Switch off when you're closing early or too busy.</p>
+          <h3 style="margin-top:18px">Payment methods (online)</h3>
+          <label class="switchrow" for="payCounterToggle"><input type="checkbox" class="toggle" id="payCounterToggle" checked> Pay at counter / cash on delivery</label>
+          <label class="switchrow" for="payOnlineToggle" style="margin-top:10px"><input type="checkbox" class="toggle" id="payOnlineToggle" checked> Card (and GCash/Maya if the QR is off) via PayMongo</label>
+        </div>
+        <div class="box qr-box">
+          <h3>GCash / Maya QR (your own account)</h3>
+          <label class="switchrow" for="qrToggle"><input type="checkbox" class="toggle" id="qrToggle"> Customers can pay by scanning your QR</label>
+          <div class="qr-setup">
+            <div class="qr-preview"><img id="qrPreview" alt="Your GCash QR" hidden><span id="qrEmpty">No QR uploaded yet</span></div>
+            <div class="qr-fields">
+              <div class="field"><label for="qrFile">QR image</label><input id="qrFile" type="file" accept="image/png,image/jpeg,image/webp"></div>
+              <div class="field"><label for="qrNameIn">Account name shown to customers</label><input id="qrNameIn" maxlength="60"></div>
+              <div class="field"><label for="qrNumIn">GCash number (optional)</label><input id="qrNumIn" maxlength="20" inputmode="tel"></div>
+              <button class="btn" type="button" id="qrSave">Save QR details</button>
+            </div>
+          </div>
+          <p class="hint">GCash app: <b>Profile → My QR Code → Download</b>. Maya users can scan it too (QR Ph).</p>
+        </div>
+        <div class="box">
+          <h3>PayMongo (optional)</h3>
+          <dl class="kv" id="pmStatus"></dl>
+          <p class="hint">Webhook URL for PayMongo (event <code>checkout_session.payment.paid</code>):</p>
+          <div class="copyrow"><code id="whUrl"></code><button class="btn ghost" type="button" id="copyWh">Copy</button></div>
+        </div>
+      </div>
+      <div class="box hours-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>Opening hours</h3><label class="switchrow" for="hoursToggle"><input type="checkbox" class="toggle" id="hoursToggle"> Online orders only during these hours</label></div>
+        <p class="hint">A closing time earlier than the opening time means <b>after midnight</b> (9:00 AM → 2:00 AM closes at 2 AM the next day). While you're closed, customers can still <b>order ahead</b> for a time you're open. The POS works at any time.</p>
+        <div class="hours-grid" id="hoursDays"></div>
+        <h4 class="tiers-h">Special days: pop-up stall, events, holidays</h4>
+        <p class="hint">These replace the normal hours on that date. Add a note (like where your pop-up stall is) and customers see it on the website.</p>
+        <div id="specialDays"></div>
+        <div class="row-btns"><button class="linkbtn" type="button" id="addSpecial">+ Add a special day</button><button class="linkbtn bad" type="button" id="closeToday">Close online orders for the rest of today</button></div>
+        <button class="btn" type="button" id="saveHours" style="margin-top:12px">Save opening hours</button>
+      </div>
+      <div class="box promo-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>Happy hour &amp; promos</h3><button class="btn ghost" type="button" id="addPromo">+ Add a promo</button></div>
+        <p class="hint">Automatic discounts by time of day, on the website and the POS. Add-ons stay full price, and the discount is rounded to whole pesos. If two promos match an item, the bigger discount wins. For order-ahead, the price follows the pickup time.</p>
+        <div id="promoList"></div>
+        <button class="btn" type="button" id="savePromos" style="margin-top:12px">Save promos</button>
+      </div>
+      <div class="box summary-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>Nightly summary email</h3><label class="switchrow" for="sumToggle"><input type="checkbox" class="toggle" id="sumToggle"> Email me a summary every night</label></div>
+        <p class="hint">Arrives around 4–5 AM for the business day that just ended (days run 4 AM → 4 AM, so after-midnight sales count for the night before): sales, profit, best sellers, low stock, voids, cash over/short and tomorrow's order-ahead orders.</p>
+        <div class="field"><label for="sumEmails">Send to (up to 5 addresses, separated by commas)</label><input id="sumEmails" type="text" inputmode="email" autocomplete="email" placeholder="owner@example.com"></div>
+        <p class="hint" id="sumStatus"></p>
+        <div class="row-btns"><button class="btn" type="button" id="saveSummary">Save</button><a class="btn ghost" id="sumPreview" href="/api/staff/summary?format=html" target="_blank" rel="noopener">Preview last night's</a><button class="btn ghost" type="button" id="sumSend">Send last night's now</button></div>
+      </div>
+      <div class="box deliv-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>Delivery</h3><label class="switchrow" for="delToggle"><input type="checkbox" class="toggle" id="delToggle"> Offer delivery</label></div>
+        <div class="deliv-grid">
+          <div>
+            <p class="hint">Tap the map to set your <b>store location</b>. Fees use the straight-line distance from here.</p>
+            <div class="map" id="setMap"><p class="map-loading">Loading map…</p></div>
+            <p class="hint" id="storePinInfo"></p>
+            <div class="row2 coords">
+              <div class="field"><label for="storeLat">Store latitude</label><input id="storeLat" inputmode="decimal" placeholder="e.g. 8.48220"></div>
+              <div class="field"><label for="storeLng">Store longitude</label><input id="storeLng" inputmode="decimal" placeholder="e.g. 124.64720"></div>
+            </div>
+            <div class="row-btns"><button class="btn ghost" type="button" id="storeHere">📍 Use this device's location (when you're at the shop)</button></div>
+            <p class="hint">Map not loading? In <b>Google Maps</b>, press and hold (phone) or right-click (computer) on your shop, copy the two numbers shown, and paste them in the boxes above. Example: <code>8.48220, 124.64720</code> (you can paste both into the first box).</p>
+          </div>
+          <div class="deliv-form">
+            <div class="row2">
+              <div class="field"><label for="delMax">Max distance (km)</label><input id="delMax" type="number" min="0.5" max="50" step="0.5"></div>
+              <div class="field"><label for="delMin">Minimum order (₱)</label><input id="delMin" type="number" min="0" step="1"></div>
+            </div>
+            <div class="field"><label for="delEta">Delivery time shown to customers</label><input id="delEta" maxlength="30" placeholder="30–45 min"></div>
+            <h4 class="tiers-h">Fees by distance</h4>
+            <div id="tiers"></div>
+            <button class="linkbtn" type="button" id="addTier">+ Add a tier</button>
+            <button class="btn" type="button" id="saveDelivery" style="margin-top:12px">Save delivery settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ACTIVITY LOG -->
+  <section class="view" id="view-activity" aria-label="Activity log" hidden>
+    <div class="wrap">
+      <div class="view-head"><div><h1>Activity log</h1><p class="note left">Who changed prices, voided orders, deleted expenses and more. Entries can't be edited or deleted.</p></div></div>
+      <div class="filters-bar">
+        <div class="field"><label for="acType">What</label><select id="acType">
+          <option value="">Everything</option><option value="price">Price &amp; cost changes</option><option value="product">Products, add-ons, photos</option>
+          <option value="order">Voids, refunds, cancels, discounts, payments</option><option value="cash">Shifts &amp; cash in/out</option>
+          <option value="expense">Expenses</option><option value="stock">Stock</option><option value="settings">Settings, hours, promos</option>
+          <option value="users">Staff accounts</option><option value="login">Sign-ins</option></select></div>
+        <div class="field"><label for="acUser">Who</label><select id="acUser"><option value="">Everyone</option></select></div>
+        <div class="field"><label for="acFrom">From</label><input id="acFrom" type="date"></div>
+        <div class="field"><label for="acTo">To</label><input id="acTo" type="date"></div>
+        <div class="field grow"><label for="acQ">Search</label><input id="acQ" type="search" placeholder="Product, order #, name"></div>
+      </div>
+      <div class="table-wrap"><table class="otable actable"><thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead><tbody id="acRows"></tbody></table></div>
+      <div class="pager"><button class="btn ghost" type="button" id="acPrev">← Newer</button><span id="acInfo"></span><button class="btn ghost" type="button" id="acNext">Older →</button></div>
+    </div>
+  </section>
+
+  <!-- USERS -->
+  <section class="view" id="view-users" aria-label="Staff accounts" hidden>
+    <div class="wrap">
+      <div class="view-head"><h1>Staff accounts</h1><button class="btn" type="button" id="newUserBtn">+ Add staff</button></div>
+      <div class="table-wrap"><table class="otable"><thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Can</th><th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody id="userRows"></tbody></table></div>
+      <p class="hint">Each person signs in with their own account, so every sale, cash in/out and shift shows who did it.</p>
+    </div>
+  </section>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="detail" aria-label="Order details" inert>
+  <div class="d-head"><h2 id="dTitle">Order</h2><button class="x" type="button" id="dClose" aria-label="Close">×</button></div>
+  <div class="d-body" id="dBody"></div>
+  <div class="d-foot" id="dFoot"></div>
+</aside>
+
+<aside class="drawer" id="msgPanel" aria-label="Customer messages" inert>
+  <div class="d-head"><h2 id="mpTitle">Messages</h2><button class="x" type="button" id="mpClose" aria-label="Close">×</button></div>
+  <div class="d-body" id="mpBody"></div>
+  <form class="d-foot chat-foot" id="mpForm" hidden>
+    <div class="chat-quick" id="mpQuick"></div>
+    <div class="chat-row"><input id="mpInput" maxlength="300" placeholder="Reply to the customer…" aria-label="Reply"><button type="submit">Send</button></div>
+  </form>
+</aside>
+
+<dialog id="posDlg" aria-labelledby="pdTitle">
+  <form method="dialog" class="dlg" id="pdForm">
+    <div><p class="eyebrow" id="pdCat">Drink</p><h3 id="pdTitle" style="margin-top:8px">Drink</h3></div>
+    <div class="grp" id="pd-sweet"><h4>Sweetness</h4><div class="seg">
+      <input type="radio" name="sweet" id="ps0" value="0"><label for="ps0">0%</label>
+      <input type="radio" name="sweet" id="ps25" value="25"><label for="ps25">25%</label>
+      <input type="radio" name="sweet" id="ps50" value="50"><label for="ps50">50%</label>
+      <input type="radio" name="sweet" id="ps75" value="75" checked><label for="ps75">75%</label>
+      <input type="radio" name="sweet" id="ps100" value="100"><label for="ps100">100%</label></div></div>
+    <div class="grp" id="pd-ice"><h4>Ice</h4><div class="seg">
+      <input type="radio" name="ice" id="pi0" value="No ice"><label for="pi0">No ice</label>
+      <input type="radio" name="ice" id="pi1" value="Less ice"><label for="pi1">Less</label>
+      <input type="radio" name="ice" id="pi2" value="Regular ice" checked><label for="pi2">Regular</label>
+      <input type="radio" name="ice" id="pi3" value="Extra ice"><label for="pi3">Extra</label></div></div>
+    <div id="pdAddons"></div>
+    <div class="dlg-foot">
+      <div class="stepper"><button type="button" id="pdMinus" aria-label="Fewer">−</button><span id="pdQty">1</span><button type="button" id="pdPlus" aria-label="More">+</button></div>
+      <div style="display:flex;gap:8px"><button class="btn ghost" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn" type="button" id="pdAdd">Add</button></div>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="payDlg" aria-labelledby="payTitle">
+  <form class="dlg" id="payForm" novalidate>
+    <div class="qr-head"><div><p class="eyebrow" id="payCode">Order</p><h3 id="payTitle" style="margin-top:8px">Collect payment</h3></div><button class="x" type="button" id="payClose" aria-label="Close">×</button></div>
+    <div class="qr-amount"><span>Total</span><b id="payTotal">₱0</b></div>
+    <div id="payPanel"></div>
+    <button class="btn" type="submit" id="paySubmit" style="justify-content:center">Paid · mark as picked up</button>
+    <p class="note" id="payNote" role="status"></p>
+  </form>
+</dialog>
+
+<dialog id="rcptDlg" aria-labelledby="rcptTitle">
+  <div class="dlg">
+    <div class="receipt" id="receipt"></div>
+    <div class="dlg-foot no-print">
+      <button class="btn ghost" type="button" id="rcptPrint">Print</button>
+      <button class="btn" type="button" id="rcptNew">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="posQrDlg" aria-label="Our GCash QR">
+  <div class="dlg" style="text-align:center">
+    <p class="eyebrow">Scan with GCash or Maya</p>
+    <b class="pos-qr-amt" id="posQrAmt">₱0</b>
+    <img id="posQrImg" class="qr-img" alt="GCash QR" src="data:,">
+    <p id="posQrName" class="hint"></p>
+    <button class="btn" type="button" id="posQrClose" style="justify-content:center">Done</button>
+  </div>
+</dialog>
+
+<dialog id="userDlg" aria-labelledby="udTitle">
+  <form class="dlg" id="userForm" novalidate>
+    <div class="qr-head"><h3 id="udTitle">Add staff</h3><button class="x" type="button" id="udClose" aria-label="Close">×</button></div>
+    <div class="row2">
+      <div class="field"><label for="udName">Full name</label><input id="udName" maxlength="60" required></div>
+      <div class="field"><label for="udUser">Username</label><input id="udUser" maxlength="30" autocapitalize="none" spellcheck="false" required></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label for="udPass" id="udPassL">Password</label><input id="udPass" type="text" maxlength="100" autocomplete="new-password" placeholder="at least 6 characters"></div>
+      <div class="field"><label for="udRole">Role</label><select id="udRole"><option value="cashier">Cashier</option><option value="manager">Manager</option><option value="admin">Admin (everything)</option></select></div>
+    </div>
+    <fieldset class="perm-list" id="udPerms"><legend>Can do</legend></fieldset>
+    <label class="switchrow" for="udActive"><input type="checkbox" class="toggle" id="udActive" checked> Account active (can sign in)</label>
+    <div class="dlg-foot"><button class="btn danger" type="button" id="udDelete" hidden>Delete account</button><button class="btn" type="submit" id="udSave">Save</button></div>
+    <p class="note" id="udNote" role="status"></p>
+  </form>
+</dialog>
+
+<dialog id="pwDlg" aria-labelledby="pwTitle">
+  <form class="dlg" id="pwForm" novalidate>
+    <div class="qr-head"><h3 id="pwTitle">Change my password</h3><button class="x" type="button" id="pwClose" aria-label="Close">×</button></div>
+    <div class="field"><label for="pwOld">Current password</label><input id="pwOld" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="pwNew">New password</label><input id="pwNew" type="password" autocomplete="new-password" placeholder="at least 6 characters"></div>
+    <button class="btn" type="submit" style="justify-content:center">Change password</button>
+    <p class="note" id="pwNote" role="status"></p>
+  </form>
+</dialog>
+
+<dialog id="shiftDlg" aria-labelledby="sdTitle">
+  <div class="dlg">
+    <div class="qr-head no-print"><h3 id="sdTitle">Shift report</h3><button class="x" type="button" id="sdClose" aria-label="Close">×</button></div>
+    <div class="receipt" id="shiftReport"></div>
+    <div class="dlg-foot no-print"><button class="btn ghost" type="button" id="sdPrint">Print</button></div>
+  </div>
+</dialog>
+
+<dialog id="finDlg" aria-label="Liquidation report">
+  <div class="dlg">
+    <div class="receipt wide" id="finReport"></div>
+    <div class="dlg-foot no-print"><button class="btn ghost" type="button" id="finDlgClose">Close</button><button class="btn" type="button" id="finDlgPrint">Print</button></div>
+  </div>
+</dialog>
+
+<div class="chart-tip" id="tip" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/js/staff.js" defer></script>
+</body>
+</html>
