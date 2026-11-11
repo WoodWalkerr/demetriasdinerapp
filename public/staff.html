@@ -74,7 +74,18 @@
     <div class="wrap">
       <div class="view-head">
         <div><h1>Live orders</h1><p class="note left" id="syncNote"></p></div>
-        <label class="switchrow" for="soundToggle"><input type="checkbox" class="toggle" id="soundToggle" checked> Sound</label>
+        <div class="sound-ctl">
+          <label class="switchrow" for="soundToggle"><input type="checkbox" class="toggle" id="soundToggle" checked> Sound</label>
+          <select id="alertStyle" aria-label="New order alert">
+            <option value="both">🔊 "New order!" + chime</option>
+            <option value="voice">🗣 "New order!" voice only</option>
+            <option value="chime">🔔 Chime only</option>
+            <option value="meow">🐱 Meow + "New order!"</option>
+            <option value="meowonly">🐱 Meow only</option>
+          </select>
+          <label class="switchrow" for="alertRepeat" title="Repeat the alert every 30 seconds until someone taps Start on the order"><input type="checkbox" class="toggle" id="alertRepeat"> Repeat until started</label>
+          <button class="btn ghost" type="button" id="alertTest">Test sound</button>
+        </div>
       </div>
       <div class="banner warn" id="shiftBanner" hidden>You haven't opened your shift. You can move orders, but to take payments <a href="#shift">open your shift</a>.</div>
       <div class="banner" id="awaitBanner" hidden></div>
@@ -105,6 +116,8 @@
             <select id="posDisc"><option value="">None</option><option value="senior">Senior citizen 20%</option><option value="pwd">PWD 20%</option><option value="staff">Staff 10%</option><option value="code">Promo code…</option><option value="custom" data-perm-opt="discounts">Custom discount…</option></select></div>
           <div class="field" id="posDiscIdF" hidden><label for="posDiscId">ID number</label><input id="posDiscId" maxlength="40"></div>
           <div class="field" id="posCodeF" hidden><label for="posCode">Promo code</label><div class="code-row"><input id="posCode" maxlength="20" autocomplete="off" placeholder="BDAY20"><button class="btn ghost" type="button" id="posCodeCheck">Check</button></div></div>
+        </div>
+        <div class="pos-codes" id="posCodeList" hidden>
         </div>
         <div class="row3 pos-custom" id="posCustomF" hidden>
           <div class="field"><label for="posCustKind">Type</label><select id="posCustKind"><option value="pct">% off</option><option value="fixed">₱ off</option></select></div>

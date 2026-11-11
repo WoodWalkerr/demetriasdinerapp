@@ -60,6 +60,64 @@
       });
     } catch {}
   };
+  // ---- New order alert: says "New order! New order!" out loud (browser's built-in voice) and/or a chime.
+  //      Settings are saved on this device: Board → Sound / alert style / Repeat until started.
+  const alertPrefs = () => ({ style: 'both', repeat: false, ...ls.get('dd-alert', {}) });
+  let voice = null;
+  const pickVoice = () => {
+    try {
+      const vs = speechSynthesis.getVoices();
+      voice = vs.find(v => v.lang === 'en-PH') || vs.find(v => /^en-US/.test(v.lang) && /samantha|google us|female|zira|aria/i.test(v.name)) || vs.find(v => /^en/.test(v.lang)) || null;
+    } catch {}
+  };
+  if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.addEventListener?.('voiceschanged', pickVoice); }
+  const speak = (text) => {
+    if (!('speechSynthesis' in window)) return false;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      if (voice) u.voice = voice;
+      u.lang = voice?.lang || 'en-US'; u.rate = 1; u.pitch = 1.05; u.volume = 1;
+      speechSynthesis.speak(u); return true;
+    } catch { return false; }
+  };
+  // Phones and tablets only allow sound after a tap, so the first tap anywhere "unlocks" the voice.
+  let voiceReady = false;
+  document.addEventListener('pointerdown', () => {
+    if (voiceReady) return; voiceReady = true;
+    try { ac ||= new (window.AudioContext || window.webkitAudioContext)(); ac.resume?.(); } catch {}
+    try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch {}
+  }, { capture: true });
+  // A cat "meow", made with the browser's sound engine (no audio file): the pitch rises then falls
+  // ("mee-ow") and a sweeping filter shapes the "ee → ow". New order = two meows, message = one short one.
+  const meow = (short) => {
+    try {
+      ac ||= new (window.AudioContext || window.webkitAudioContext)(); ac.resume?.();
+      for (const [t0, d, base] of short ? [[0, 0.42, 640]] : [[0, 0.62, 560], [0.72, 0.7, 520]]) {
+        const t = ac.currentTime + t0;
+        const o = ac.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(base, t);
+        o.frequency.linearRampToValueAtTime(base * 1.55, t + d * 0.32);
+        o.frequency.exponentialRampToValueAtTime(base * 0.78, t + d);
+        const vib = ac.createOscillator(), vg = ac.createGain(); vib.frequency.value = 7; vg.gain.value = base * 0.025;
+        vib.connect(vg).connect(o.frequency);
+        const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 3.5;
+        f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(1900, t + d * 0.35); f.frequency.linearRampToValueAtTime(950, t + d);
+        const soft = ac.createBiquadFilter(); soft.type = 'lowpass'; soft.frequency.value = 3200;
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1.0, t + 0.07);
+        g.gain.setValueAtTime(0.9, t + d * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+        o.connect(f).connect(soft).connect(g).connect(ac.destination);
+        o.start(t); o.stop(t + d + 0.05); vib.start(t); vib.stop(t + d + 0.05);
+      }
+    } catch {}
+  };
+  const announce = (text, high) => {
+    if (!$('#soundToggle').checked) return;
+    const st = alertPrefs().style, cat = st === 'meow' || st === 'meowonly';
+    if (cat) meow(high); else if (st !== 'voice') chime(high);
+    if (st === 'both' || st === 'voice' || st === 'meow') setTimeout(() => speak(text), st === 'voice' ? 0 : cat ? (high ? 550 : 1500) : 450);
+  };
   const payBadge = (o) => {
     const parts = (o.payments || []).length > 1 ? o.payments.map(p => PAY[p.method] || p.method).join(' + ') : PAY[o.paymentMethod] || o.paymentMethod;
     return `<span class="pay-badge">${o.source === 'pos' ? 'POS · ' : ''}${esc(parts)} <span class="pill ${o.paymentStatus}">${PAYST[o.paymentStatus] || o.paymentStatus}</span></span>`;
@@ -176,11 +234,14 @@
       board = await api('/api/staff/orders');
       remember(board.open); remember(board.finished);
       const fresh = seen ? board.open.filter(o => !seen.has(o.id) && o.status === 'new') : [];
-      if (fresh.length) { toast(`New order #${fresh[0].code} from ${fresh[0].name}`); chime(); }
+      // Don't announce a POS sale on the screen of the cashier who rang it up.
+      const loud = fresh.filter(o => !(o.source === 'pos' && o.staffName === me?.user?.name));
+      if (fresh.length) toast(`New order #${fresh[0].code} from ${fresh[0].name}`);
+      if (loud.length) announce(loud.length > 1 ? `${loud.length} new orders! New orders!` : 'New order! New order!');
       seen = new Set([...(seen || []), ...board.open.map(o => o.id)]);
       const unread = board.threads.reduce((a, t) => a + t.unread, 0);
       const msgKey = board.threads.map(t => t.id + ':' + t.lastAt).join('|');
-      if (seenMsgs !== null && unread > 0 && msgKey !== seenMsgs) { const t = board.threads.find(x => x.unread); if (t) { toast(`💬 #${t.code} ${t.name}: ${t.lastMessage}`); chime(true); } }
+      if (seenMsgs !== null && unread > 0 && msgKey !== seenMsgs) { const t = board.threads.find(x => x.unread); if (t) { toast(`💬 #${t.code} ${t.name}: ${t.lastMessage}`); announce('New message', true); } }
       seenMsgs = msgKey;
       if (!!me.shift !== board.shiftOpen) { await refreshMe(); }
       $('#syncNote').textContent = `Updated ${fmtTime(Date.now())} · live`;
@@ -191,6 +252,27 @@
     } catch (e) {
       if (e.status !== 401) { $('#syncNote').textContent = `Can't reach the server. Retrying… (${e.message})`; $('#syncNote').classList.add('err'); }
     }
+  }
+  // "Repeat until started": every 30 s, remind while an order is still waiting in New
+  // (order-ahead orders only once they're due within 30 minutes).
+  setInterval(() => {
+    if (!board || !alertPrefs().repeat || !$('#soundToggle').checked) return;
+    const waiting = board.open.filter(o => o.status === 'new' && !(o.source === 'pos' && o.staffName === me?.user?.name)
+      && (!o.scheduledFor || new Date(o.scheduledFor) - Date.now() < 30 * 60e3));
+    if (waiting.length) announce(waiting.length > 1 ? `${waiting.length} orders waiting! New order!` : 'New order! New order!');
+  }, 30000);
+  {
+    const p = alertPrefs();
+    $('#alertStyle').value = p.style; $('#alertRepeat').checked = !!p.repeat;
+    const save = () => ls.set('dd-alert', { style: $('#alertStyle').value, repeat: $('#alertRepeat').checked });
+    $('#alertStyle').addEventListener('change', save);
+    $('#alertRepeat').addEventListener('change', save);
+    $('#alertTest').addEventListener('click', () => {
+      if (!$('#soundToggle').checked) { $('#soundToggle').checked = true; }
+      const st = $('#alertStyle').value;
+      if (['both', 'voice', 'meow'].includes(st) && !('speechSynthesis' in window)) toast("This browser can't speak. Try Chrome or Safari; the chime still works.");
+      announce('New order! New order!');
+    });
   }
   async function refreshMe() { try { const d = await api('/api/staff/login'); if (d.signedIn) setMe(d); } catch {} }
 
@@ -479,6 +561,7 @@
   const posUnit = (l) => { const p = prodById()[l.id]; const A = addonById(); return (p?.price || 0) - (posPromo(p)?.off || 0) + (l.addons || []).reduce((a, id) => a + (A[id]?.price || 0), 0); };
   const DISC = { senior: 20, pwd: 20, staff: 10 }, DISC_LABEL = { senior: 'Senior citizen 20%', pwd: 'PWD 20%', staff: 'Staff 10%' };
   let posCode = null; // promo code checked at the POS
+  let posCodes = null, posCodesAt = 0; // saved codes listed under the code box
   // Same rules as the server (lib/promocodes.js, lib/staff/pos.js).
   const codeOff = (c, sub) => { if (!c || sub < (c.minCents || 0)) return 0; let off = Math.round((c.kind === 'pct' ? (sub * c.value) / 100 : c.value) / 100) * 100; if (c.kind === 'pct' && c.maxOffCents) off = Math.min(off, c.maxOffCents); return Math.max(0, Math.min(off, sub)); };
   const posTotals = () => {
@@ -544,6 +627,7 @@
     const t = posTotals(), d = $('#posDisc').value;
     $('#posDiscIdF').hidden = !(d === 'senior' || d === 'pwd');
     $('#posCodeF').hidden = d !== 'code'; $('#posCustomF').hidden = d !== 'custom';
+    renderPosCodes();
     $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.sub)}</dd>${t.disc ? `<dt>${esc(t.label)}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
     posPay.redraw();
   }
@@ -570,6 +654,30 @@
     renderTicket();
   };
   $('#posCodeCheck').onclick = checkPosCode;
+  // Saved promo codes, shown as buttons under the code box (new codes appear automatically).
+  async function loadPosCodes(force) {
+    if (!me || (!force && posCodes && Date.now() - posCodesAt < 20000)) return renderPosCodes();
+    try { posCodes = (await api('/api/staff/codes?available=1')).codes; posCodesAt = Date.now(); } catch (e) { if (e.status !== 403) fail(e); posCodes = posCodes || []; }
+    renderPosCodes();
+  }
+  function renderPosCodes() {
+    const box = $('#posCodeList'), show = $('#posDisc').value === 'code';
+    box.hidden = !show; if (!show) return;
+    const list = posCodes || [];
+    box.innerHTML = !posCodes ? '<p class="hint">Loading promo codes…</p>'
+      : list.length ? `<p class="hint">Saved promo codes, tap one to use it:</p><div class="code-chips">${list.map(c => `
+          <button type="button" class="code-chip ${posCode?.code === c.code ? 'on' : ''}" data-pick-code="${esc(c.code)}" ${c.usable ? '' : 'disabled'}>
+            <b>${esc(c.code)}</b><span>${esc(c.label)}${c.minCents ? ` · min ${money(c.minCents)}` : ''}</span>
+            <small>${c.usable ? [c.note, c.endsOn ? `until ${c.endsOn}` : '', c.usesLeft != null ? `${c.usesLeft} left` : ''].filter(Boolean).map(esc).join(' · ') || 'Ready to use' : esc(c.why)}</small>
+          </button>`).join('')}</div>`
+      : '<p class="hint">No promo codes saved yet. Admins and managers can add them in Settings → Promo codes.</p>';
+  }
+  $('#posCodeList').addEventListener('click', e => {
+    const b = e.target.closest('[data-pick-code]'); if (!b || b.disabled) return;
+    $('#posCode').value = b.dataset.pickCode; checkPosCode();
+  });
+  $('#posDisc').addEventListener('change', () => { if ($('#posDisc').value === 'code') loadPosCodes(true); else renderPosCodes(); });
+  setInterval(() => { if (!$('#view-pos').hidden && $('#posDisc').value === 'code') loadPosCodes(true); }, 60000);
   $('#posCode').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkPosCode(); } });
   $('#posDiscId').addEventListener('input', updateCharge);
   const resetTicket = () => { ticketLines = []; posCode = null; $('#posForm').reset(); $('#posBoard').checked = true; posPay.reset(); renderTicket(); };
