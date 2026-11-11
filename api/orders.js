@@ -4,7 +4,8 @@ import { PICKUP_MINUTES, PAYMENT_METHODS } from '../lib/menu.js';
 import { sql, batch, ensureSchema, getSettings, qrReady, qrPublic, deliveryReady, versionQuery } from '../lib/db.js';
 import { loadCatalog, priceLine, makeCode, takeStock, returnStock, deliveryQuote } from '../lib/pricing.js';
 import { openState, TZ } from '../lib/time.js';
-import { checkCode, codeDiscount, codeLabel, publicCode } from '../lib/promocodes.js';
+import { checkCode, codeDiscount, codeLabel, publicCode, bogoReward, bogoNeed } from '../lib/promocodes.js';
+import { activeDeals, applyDeals, dealsDiscountLabel } from '../lib/deals.js';
 import { createCheckout, paymongoConfigured, baseUrl, syncPayment } from '../lib/paymongo.js';
 
 // Public order endpoints (vercel.json rewrites /api/orders/:id → /api/orders?id=:id)
@@ -48,7 +49,7 @@ async function customerView(o) {
     id: o.id, code: o.code, status: o.status, totalCents: o.total_cents, deliveryFeeCents: o.delivery_fee_cents || 0,
     orderType: o.order_type, delivery: o.delivery ? { address: o.delivery.address, km: o.delivery.km } : null,
     pickupLabel: o.pickup_label, pickupAt: o.pickup_at, scheduledFor: o.scheduled_for || null, createdAt: o.created_at, items: o.items,
-    discountCents: o.discount_cents || 0, promoCode: o.promo_code || null,
+    discountCents: o.discount_cents || 0, promoCode: o.promo_code || null, dealCents: o.deal_cents || 0, deals: o.deals || [],
     paymentMethod: o.payment_method, paymentStatus: o.payment_status, reference: o.reference,
     checkoutUrl: o.payment_status === 'pending' ? o.checkout_url : null,
     qr: needQr ? qrPublic(await getSettings()) : null,
@@ -120,12 +121,18 @@ async function createOrder(req, res) {
     pickupAt = new Date(Date.now() + minutes * 60_000).toISOString();
   }
 
-  // Promo code: on the items only (not the delivery fee), checked again here.
-  let discount = 0, promo = null;
+  // Buy 1 Take 1 deals (automatic, priced at the order time), then the promo code on what's left.
+  // Both are on the items only (not the delivery fee), and checked again here.
+  const deal = applyDeals(items, await activeDeals('online', scheduled || now));
+  const afterDeal = subtotal - deal.offCents;
+  let codeOff = 0, promo = null;
   if (b.promoCode) {
-    promo = await checkCode(b.promoCode, { channel: 'online', subtotal });
-    discount = codeDiscount(promo, subtotal);
+    promo = await checkCode(b.promoCode, { channel: 'online', subtotal: afterDeal });
+    codeOff = codeDiscount(promo, afterDeal, items, deal.used);
+    if (promo.kind === 'bogo' && !codeOff) throw new HttpError(409, bogoNeed(promo, bogoReward(promo.bogo, items, deal.used).need));
   }
+  const discount = deal.offCents + codeOff;
+  const discountType = [dealsDiscountLabel(deal.applied), promo ? `Promo ${promo.code} · ${codeLabel(promo)}` : ''].filter(Boolean).join(' + ') || null;
   const total = subtotal - discount + fee;
   const order = { id: crypto.randomUUID(), token: crypto.randomBytes(18).toString('base64url'), code: makeCode('D') };
   const payStatus = pm.online ? 'pending' : pm.manual ? 'awaiting_proof' : 'unpaid';
@@ -134,11 +141,11 @@ async function createOrder(req, res) {
   try {
     await sql`INSERT INTO orders (id, code, token, name, pickup_label, pickup_at, note, items, total_cents, subtotal_cents,
                 payment_method, payment_status, order_type, delivery, delivery_fee_cents, stock_applied, scheduled_for,
-                discount_type, discount_cents, promo_code)
+                discount_type, discount_cents, promo_code, deal_cents, deals)
               VALUES (${order.id}, ${order.code}, ${order.token}, ${name}, ${pickupLabel}, ${pickupAt}, ${clean(b.note, 200)},
                 ${JSON.stringify(items)}::jsonb, ${total}, ${subtotal}, ${method}, ${payStatus},
                 ${isDelivery ? 'delivery' : 'pickup'}, ${delivery ? JSON.stringify(delivery) : null}::jsonb, ${fee}, ${took}, ${scheduled ? scheduled.toISOString() : null},
-                ${promo ? `Promo ${promo.code} · ${codeLabel(promo)}` : null}, ${discount}, ${promo?.code || null})`;
+                ${discountType}, ${discount}, ${promo?.code || null}, ${deal.offCents}, ${deal.applied.length ? JSON.stringify(deal.applied) : null}::jsonb)`;
   } catch (e) {
     if (took) await returnStock({ id: order.id, items, stock_applied: true }, `Failed order #${order.code}`);
     throw e;
@@ -149,7 +156,7 @@ async function createOrder(req, res) {
     try {
       // PayMongo adds up the lines itself and can't take a negative "discount" line, so a discounted order is sent as one line.
       const lines = discount
-        ? [{ name: `Order #${order.code} (${items.reduce((a, i) => a + i.qty, 0)} items, ${promo.code} −₱${(discount / 100).toLocaleString('en-PH')}${fee ? ', incl. delivery' : ''})`, qty: 1, unitCents: total, opts: '' }]
+        ? [{ name: `Order #${order.code} (${items.reduce((a, i) => a + i.qty, 0)} items, ${[deal.applied.length ? 'Buy 1 Take 1' : '', promo?.code].filter(Boolean).join(' + ')} −₱${(discount / 100).toLocaleString('en-PH')}${fee ? ', incl. delivery' : ''})`, qty: 1, unitCents: total, opts: '' }]
         : fee ? [...items, { name: 'Delivery fee', qty: 1, unitCents: fee, opts: '' }] : items;
       const c = await createCheckout({ order: { ...order }, items: lines, method, baseUrl: baseUrl(req) });
       checkoutUrl = c.url;
@@ -165,7 +172,7 @@ async function createOrder(req, res) {
     id: order.id, token: order.token, code: order.code, status: 'new',
     paymentMethod: method, paymentStatus: payStatus, checkoutUrl,
     qr: method === 'qrph' ? qrPublic(settings) : null,
-    totalCents: total, deliveryFeeCents: fee, discountCents: discount, promoCode: promo?.code || null, orderType: isDelivery ? 'delivery' : 'pickup',
+    totalCents: total, deliveryFeeCents: fee, discountCents: discount, promoCode: promo?.code || null, dealCents: deal.offCents, deals: deal.applied, orderType: isDelivery ? 'delivery' : 'pickup',
     pickupLabel, pickupAt, scheduledFor: scheduled ? scheduled.toISOString() : null, createdAt: new Date().toISOString(), items, messages: [],
   });
 }

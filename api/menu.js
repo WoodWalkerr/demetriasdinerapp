@@ -4,6 +4,8 @@ import { ensureSchema, sql, batch, settingsQuery, versionQuery, shapeSettings, q
 import { productsQuery, addonsQuery, publicProduct, publicAddon, publicPromo } from '../lib/pricing.js';
 import { openState, upcomingWindows, TZ } from '../lib/time.js';
 import { paymongoConfigured } from '../lib/paymongo.js';
+import { popupCodes, popupQuery } from '../lib/promocodes.js';
+import { dealsQuery, dealsFor, publicDeal } from '../lib/deals.js';
 
 // GET /api/menu         → products, add-ons, payment and delivery options (one database round trip)
 // GET /api/menu?sync=1  → just { v, build }: tiny check pages make every few seconds to stay up to date
@@ -31,7 +33,7 @@ export default route(['GET'], async (req, res) => {
   }
 
   res.setHeader('Vercel-CDN-Cache-Control', 'max-age=3, stale-while-revalidate=20');
-  const [[row], products, addons, [v]] = await batch([settingsQuery(), productsQuery(), addonsQuery(), versionQuery()]);
+  const [[row], products, addons, [v], featured, dealRows] = await batch([settingsQuery(), productsQuery(), addonsQuery(), versionQuery(), popupQuery(), dealsQuery()]);
   const s = shapeSettings(row);
   const online = s.payOnline && paymongoConfigured();
   const qr = qrReady(s);
@@ -54,6 +56,10 @@ export default route(['GET'], async (req, res) => {
       closedDays: (s.hours.special || []).filter((x) => x.closed).map((x) => ({ date: x.date, note: x.note })),
     },
     promos: s.promos.filter((p) => p.active).map(publicPromo),
+    // Promo codes the shop advertises in the website pop-up (Staff → Settings → Promo codes → Pop-up).
+    featured: popupCodes(featured),
+    // Buy 1 Take 1 deals for online orders (Staff → Settings → Buy 1 Take 1). The browser checks days/dates for the order time.
+    deals: dealsFor(dealRows, 'online').map(publicDeal),
     items: products.map(publicProduct),
     addons: addons.filter((a) => a.active).map(publicAddon),
   });

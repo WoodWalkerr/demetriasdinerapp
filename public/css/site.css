@@ -866,3 +866,101 @@ body.sees-cost .field.cost-col{display:grid}
 .code-chip:hover:not([disabled]){border-color:var(--matcha)}
 .code-chip.on{border-color:var(--matcha);box-shadow:0 0 0 2px var(--matcha) inset}
 .code-chip[disabled]{opacity:.5;cursor:not-allowed}
+
+/* Settings â†’ Promo codes: website pop-up fields */
+.popup-fields{flex:1 1 100%;display:grid;gap:8px;padding:10px 12px;border:1px dashed var(--line);border-radius:12px}
+.popup-more{display:flex;flex-wrap:wrap;gap:10px}
+.popup-more .field{flex:1 1 220px;margin:0}
+
+/* ---------- promo pop-up ---------- */
+.promo-pop{width:min(400px,calc(100% - 32px));overflow:hidden;text-align:center}
+.promo-pop[open]{animation:ppIn .45s cubic-bezier(.2,.9,.25,1.25)}
+@keyframes ppIn{from{transform:translateY(24px) scale(.92);opacity:0}to{transform:none;opacity:1}}
+.pp-top{position:relative;background:var(--matcha);height:96px;display:grid;place-items:center;
+  background-image:radial-gradient(circle at 18% 30%,#ffffff22 0 10px,transparent 11px),radial-gradient(circle at 82% 65%,#ffffff1f 0 14px,transparent 15px),radial-gradient(circle at 62% 22%,#ffffff18 0 6px,transparent 7px)}
+.pp-cat{width:76px;height:76px;margin-bottom:-58px;border-radius:50%;box-shadow:0 0 0 6px var(--bg);animation:ppBob 2.4s ease-in-out infinite}
+@keyframes ppBob{50%{transform:translateY(-4px) rotate(-4deg)}}
+.pp-top .x{position:absolute;top:10px;right:10px;width:34px;height:34px;font-size:18px}
+.pp-body{padding:44px 22px 20px;display:grid;gap:10px;justify-items:center}
+.pp-body h3{font:400 26px/1.1 var(--display);margin:2px 0 0}
+.pp-text{margin:0;color:var(--muted);font-size:15px;line-height:1.45}
+.pp-ticket{display:grid;gap:4px;justify-items:center;width:100%;margin-top:4px;padding:14px 16px;border:2px dashed var(--matcha);border-radius:16px;background:var(--card);position:relative}
+.pp-ticket::before,.pp-ticket::after{content:"";position:absolute;top:50%;width:18px;height:18px;margin-top:-9px;border-radius:50%;background:var(--bg);border:2px dashed var(--matcha)}
+.pp-ticket::before{left:-11px;clip-path:inset(0 0 0 50%)}.pp-ticket::after{right:-11px;clip-path:inset(0 50% 0 0)}
+.pp-code{font:700 30px/1 var(--mono);letter-spacing:.12em;color:var(--matcha)}
+.pp-ticket span{font-weight:700;font-size:15px}
+.pp-rules{margin:0;font-size:13px;color:var(--muted)}
+.pp-others{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;font-size:13px;color:var(--muted);align-items:center}
+.pp-others button{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:5px 10px;font:600 12.5px var(--mono);cursor:pointer;color:var(--ink)}
+.pp-btns{display:flex;gap:10px;width:100%;margin-top:4px}
+.pp-btns .btn{flex:1;justify-content:center}
+.pp-btns .btn[disabled]{opacity:.75}
+.pp-later{margin-top:2px}
+.sb.code{cursor:pointer;font:inherit;font-size:14.5px;color:var(--ink);background:color-mix(in srgb,var(--matcha) 12%,var(--card));border-color:color-mix(in srgb,var(--matcha) 45%,transparent)}
+.sb.code:hover{border-color:var(--matcha)}
+@media (prefers-reduced-motion:reduce){.promo-pop[open],.pp-cat{animation:none}}
+
+/* ---------- Buy 1 Take 1 deals (staff) ---------- */
+.deal-form{display:grid;gap:12px;padding:14px;margin:12px 0;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.deal-form h4{margin:0}
+.deal-form .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:640px){.deal-form .row3{grid-template-columns:1fr 1fr}}
+.deal-pick-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.deal-pick-bar input,.deal-pick-bar select{padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit;font-size:14px}
+.deal-pick-bar input{flex:1 1 180px;min-width:0}
+.deal-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px;max-height:260px;overflow:auto;padding:4px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.deal-pick .pick{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:center;padding:7px 10px;border-radius:10px;border:1px solid transparent;cursor:pointer;font-size:14px}
+.deal-pick .pick.on{border-color:var(--matcha);background:color-mix(in srgb,var(--matcha) 10%,transparent)}
+.deal-pick .pick small{color:var(--muted);font-family:var(--mono)}
+.b1t1-tag{position:absolute;top:8px;right:8px;font:700 10.5px/1 var(--mono);letter-spacing:.06em;padding:4px 6px;border-radius:6px;background:var(--hojicha);color:#fff;font-style:normal}
+.pos-item{position:relative}
+.deal-hint{color:var(--matcha);font-weight:700;font-size:13px}
+
+/* ---------- Buy 1 Take 1 deals (website) ---------- */
+.filters .f-deal{border-color:var(--hojicha);color:var(--hojicha)}
+.filters .f-deal[aria-pressed="true"]{background:var(--hojicha);color:#fff}
+.card.on-deal .tag{background:var(--hojicha);color:#fff}
+.deal-hint{margin:6px 0 10px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--hojicha) 12%,var(--card));border:1px dashed color-mix(in srgb,var(--hojicha) 55%,transparent);font-size:14px}
+.deal-hint .linkbtn{margin-left:4px}
+#dealLbl,#dealTotal{color:var(--hojicha);font-weight:700}
+.promo-pop.is-deal .pp-top{background-color:var(--hojicha)}
+.promo-pop.is-deal .pp-ticket,.promo-pop.is-deal .pp-ticket::before,.promo-pop.is-deal .pp-ticket::after{border-color:var(--hojicha)}
+.promo-pop.is-deal .pp-code{color:var(--hojicha);font-size:24px;letter-spacing:.08em}
+.promo-pop.is-deal .pp-ticket span{font-size:18px}
+.deal-pick .pick{text-transform:none;letter-spacing:0;font:500 14px/1.3 var(--body);color:var(--ink)}
+.deal-pick-bar select{flex:0 1 220px;width:auto}
+.deal-pick-bar input{width:auto}
+
+/* ---------- promo codes: "Buy this, get that" ---------- */
+.bogo-box{flex:1 1 100%;display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:12px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+.bogo-box h4{margin:0 0 8px}
+.bogo-box .row2,.bogo-box .row3{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.bogo-box .row3{grid-template-columns:repeat(3,1fr)}
+.bogo-box .deal-pick{max-height:220px}
+.bogo-preview{grid-column:1/-1;margin:0}
+@media (max-width:760px){.bogo-box{grid-template-columns:1fr}.bogo-box .row3{grid-template-columns:1fr 1fr}}
+.code-form-btns{flex:1 1 100%}
+/* the code form is a grid: these blocks take a full row */
+.code-form .bogo-box,.code-form .popup-fields,.code-form .code-form-btns{grid-column:1/-1}
+.code-form .code-form-btns{display:flex;gap:10px;justify-content:flex-end;margin-top:0}
+.bogo-box .bogo-col{min-width:0}
+@media (min-width:900px){.bogo-box .field label{white-space:nowrap}}
+
+/* ---------- fit big numbers inside their cards ---------- */
+/* Each card is a size container, so its number scales with the card's width (cqi = 1% of the card). */
+.stat,.pcard,.rcard{min-width:0}
+.tiles .stat,.pcard,.rcard{container-type:inline-size}
+.tiles .stat b{font-size:clamp(17px,13cqi,32px);white-space:nowrap}
+.pc-v{font-size:clamp(17px,12.5cqi,28px);white-space:nowrap;overflow-wrap:normal}
+.rcard b{font-size:clamp(16px,11cqi,24px);white-space:nowrap}
+.tiles .stat span,.pcard .pc-k{overflow-wrap:anywhere}
+
+/* ---------- promo code form: keep "Discount" and its amount inside their column ---------- */
+.code-form > *{min-width:0}
+.code-form .code-row select{flex:1 1 auto;width:auto;min-width:0}
+.code-form .code-row #cfValue{flex:0 0 76px;width:76px}
+.code-form .code-row #cfCode{flex:1 1 auto}
+.code-form .field{grid-template-columns:minmax(0,1fr)}
+.code-form .code-row{min-width:0}
+.code-form .field:has(#cfKind){grid-column:span 2}
+@media (max-width:520px){.code-form .field:has(#cfKind){grid-column:1/-1}}

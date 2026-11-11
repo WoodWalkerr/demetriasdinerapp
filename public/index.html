@@ -187,6 +187,7 @@
   <div class="d-head"><h2>Your order</h2><button class="x" type="button" id="drawerClose" aria-label="Close">×</button></div>
   <form class="d-body" id="orderForm" novalidate>
     <div class="lines" id="lines"></div>
+    <p class="deal-hint" id="dealHint" hidden></p>
     <fieldset class="otype" id="oType" hidden>
       <legend>How do you want it?</legend>
       <input type="radio" name="otype" id="ot-pickup" value="pickup" checked><label for="ot-pickup"><b>Pickup</b><small>at the counter</small></label>
@@ -227,12 +228,30 @@
     <div class="mine" id="mine" hidden></div>
   </form>
   <div class="d-foot">
-    <dl class="sums" id="sums" hidden><dt>Subtotal</dt><dd id="subTotal">₱0</dd><dt id="discLbl" hidden>Discount</dt><dd id="discTotal" hidden>−₱0</dd><dt id="feeLbl">Delivery fee</dt><dd id="feeTotal">₱0</dd></dl>
+    <dl class="sums" id="sums" hidden><dt>Subtotal</dt><dd id="subTotal">₱0</dd><dt id="dealLbl" hidden>Buy 1 Take 1</dt><dd id="dealTotal" hidden>−₱0</dd><dt id="discLbl" hidden>Discount</dt><dd id="discTotal" hidden>−₱0</dd><dt id="feeLbl">Delivery fee</dt><dd id="feeTotal">₱0</dd></dl>
     <div class="total">Total <span id="total">₱0</span></div>
     <button class="btn" type="submit" form="orderForm" id="placeBtn" disabled>Place order</button>
     <p class="note" id="orderNote" role="status"></p>
   </div>
 </aside>
+
+<!-- Promo pop-up: codes the shop advertises (Staff → Settings → Promo codes → Website pop-up) -->
+<dialog id="promoDlg" class="promo-pop" aria-labelledby="ppTitle">
+  <div class="pp-top">
+    <svg class="pp-cat" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--matcha)"/><path d="M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z" fill="#111"/><circle cx="16.2" cy="21.5" r="2.6" fill="#FFF9E8"/><circle cx="23.8" cy="21.5" r="2.6" fill="#FFF9E8"/></svg>
+    <button class="x" type="button" id="ppClose" aria-label="Close">×</button>
+  </div>
+  <div class="pp-body">
+    <p class="eyebrow" id="ppEyebrow">🎉 Promo for you</p>
+    <h3 id="ppTitle">A treat from Demetria's</h3>
+    <p class="pp-text" id="ppText" hidden></p>
+    <div class="pp-ticket"><b class="pp-code" id="ppCode">CODE</b><span id="ppLabel"></span></div>
+    <p class="pp-rules" id="ppRules"></p>
+    <div class="pp-others" id="ppOthers" hidden></div>
+    <div class="pp-btns"><button class="btn" type="button" id="ppUse">Use this code</button><button class="btn ghost" type="button" id="ppCopy">Copy code</button></div>
+    <button class="linkbtn pp-later" type="button" id="ppLater">Maybe later</button>
+  </div>
+</dialog>
 
 <dialog id="optDlg" aria-labelledby="optTitle">
   <form method="dialog" class="dlg" id="optForm">

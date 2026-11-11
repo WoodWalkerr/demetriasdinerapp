@@ -297,27 +297,30 @@
   let apiState = 'loading';
 
   const grid = document.getElementById('grid');
-  let filter = 'all';
+  let filter = 'all', bogoFilter = []; // bogoFilter: items shown by a promo code's "Show me" 
   // A real photo (uploaded in /staff → Products) wins; otherwise the drawing.
   const artFor = (it) => { if (it.img) return `<img class="photo" src="${esc(it.img)}" alt="${esc(it.name)}" loading="lazy" decoding="async">`; const a = ART[it.id]; return a && a.c === it.cat ? a.art() : autoArt(it); };
   const forSale = () => cat.items.filter(it => it.price != null); // items without a selling price stay hidden
   function renderFilters() {
     const used = new Set(forSale().map(it => it.cat));
     const cats = Object.entries(CAT_LABEL).filter(([k]) => used.has(k));
-    if (filter !== 'all' && !used.has(filter)) filter = 'all';
+    const hasDeals = !!(cat.deals?.length && dealsAt().length); // cat.deals arrives with the menu, after the helpers exist
+    if (filter !== 'all' && filter !== 'bogo' && !used.has(filter) && !(filter.startsWith('deal') && hasDeals)) filter = 'all';
     $('.filters').innerHTML = `<button type="button" data-f="all" aria-pressed="${filter === 'all'}">All</button>` +
+      (hasDeals ? `<button type="button" data-f="deals" class="f-deal" aria-pressed="${filter.startsWith('deal')}">🎉 Buy 1 Take 1</button>` : '') +
       cats.map(([k, v]) => `<button type="button" data-f="${k}" aria-pressed="${filter === k}">${esc(v)}</button>`).join('');
   }
   document.querySelector('.filters').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; filter = b.dataset.f; renderFilters(); render(); });
   function render() {
-    const list = forSale().filter(it => filter === 'all' || it.cat === filter || (filter === 'favorite' && ART[it.id]?.also?.includes('favorite')));
+    const inDeal = (it) => filter === 'deals' ? !!dealFor(it) : filter.startsWith('deal:') ? !!dealsAt().find(d => d.id === filter.slice(5) && d.productIds.includes(it.id)) : false;
+    const list = forSale().filter(it => filter === 'all' || it.cat === filter || inDeal(it) || (filter === 'bogo' && bogoFilter.includes(it.id)) || (filter === 'favorite' && ART[it.id]?.also?.includes('favorite')));
     grid.innerHTML = list.map((it, i) => {
-      const pr = promoFor(it);
-      const tag = pr ? `${pr.promo.name} −${pr.promo.pct}%` : ART[it.id]?.tag;
+      const pr = promoFor(it), dl = cat.deals ? dealFor(it) : null;
+      const tag = dl ? 'Buy 1 Take 1' : pr ? `${pr.promo.name} −${pr.promo.pct}%` : ART[it.id]?.tag;
       const counterOnly = it.price == null;
       const label = it.soldOut ? 'Sold out' : counterOnly ? 'Order at counter' : 'Add +';
       return `
-      <article class="card in${it.soldOut ? ' sold' : ''}${it.img ? ' has-photo' : ''}${pr ? ' on-promo' : ''}" data-id="${it.id}" style="animation-delay:${Math.min(i, 12) * 35}ms">
+      <article class="card in${it.soldOut ? ' sold' : ''}${it.img ? ' has-photo' : ''}${pr || dl ? ' on-promo' : ''}${dl ? ' on-deal' : ''}" data-id="${it.id}" style="animation-delay:${Math.min(i, 12) * 35}ms">
         <span class="tag"${it.soldOut || tag ? '' : ' hidden'}>${it.soldOut ? 'Sold out' : esc(tag || '')}</span>
         ${it.left && !it.soldOut ? `<span class="left">Only ${it.left} left</span>` : ''}
         <div class="art">${artFor(it)}</div>
@@ -360,7 +363,27 @@
     }
     return best;
   }
-  const promoSig = () => (cat.promos || []).filter(p => promoOn(p, new Date())).map(p => p.id).join();
+  // Buy 1 Take 1: same rules as the server (lib/deals.js); the server always re-checks.
+  const bizDay = (t) => cafeDay(new Date(t) - 4 * 3600e3); // business day: 4 AM → 4 AM
+  const dealOn = (d, t = new Date()) => !(d.startsOn && bizDay(t) < d.startsOn) && !(d.endsOn && bizDay(t) > d.endsOn) && !(d.days?.length && !d.days.includes(clock(t).dow));
+  const dealsAt = (t = new Date()) => (cat.deals || []).filter(d => dealOn(d, t));
+  const dealFor = (it, t) => dealsAt(t).find(d => d.productIds.includes(it.id));
+  function applyDeals(lines, deals) {
+    const used = new Map(), applied = [], waiting = []; let total = 0;
+    for (const d of deals) {
+      const units = [];
+      lines.forEach((l, i) => { if (!d.productIds.includes(l.id)) return; const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); for (let k = used.get(i) || 0; k < l.qty; k++) units.push({ i, base }); });
+      units.sort((a, b) => b.base - a.base);
+      let pairs = Math.floor(units.length / 2); if (d.maxPairs) pairs = Math.min(pairs, d.maxPairs);
+      let off = 0;
+      for (let p = 0; p < pairs; p++) { const a = units[2 * p], b = units[2 * p + 1]; off += a.base + b.base - (d.pairCents != null ? Math.min(d.pairCents, a.base + b.base) : a.base); used.set(a.i, (used.get(a.i) || 0) + 1); used.set(b.i, (used.get(b.i) || 0) + 1); }
+      if (pairs && off > 0) { applied.push({ id: d.id, title: d.title, pairs, offCents: off }); total += off; }
+      if (units.length % 2 === 1 && (!d.maxPairs || pairs < d.maxPairs)) waiting.push(d);
+    }
+    return { offCents: total, applied, waiting, used };
+  }
+  const dealWhat = (d) => (d.pairCents != null ? `2 for ${pesos(d.pairCents)}` : 'the 2nd one is free');
+  const promoSig = () => (cat.promos || []).filter(p => promoOn(p, new Date())).map(p => p.id).join() + '|' + dealsAt().map(d => d.id).join();
   const promoWhat = (p) => `${p.pct}% off ${p.cats?.length ? p.cats.map(c => CAT_LABEL[c] || c).join(', ') : 'everything'}${p.icedOnly ? ' (iced drinks)' : ''}`;
   function renderHours() {
     const H = cat.hours; if (!H) return;
@@ -382,6 +405,7 @@
     if (note) bits.push(`<span class="sb note">📍 ${st.open ? 'Today' : 'Next'}: ${esc(note)}</span>`);
     for (const p of (cat.promos || []).filter(p => promoOn(p, new Date()))) bits.push(`<span class="sb promo">🍹 ${esc(p.name)} now: ${esc(promoWhat(p))} until ${t12(p.to)}</span>`);
     $('#statusBar').hidden = !bits.length; $('#statusBar').innerHTML = bits.join('');
+    if (typeof renderPromoChip === 'function' && cat.featured) renderPromoChip();
   }
 
   // ---------- order ahead: day + time slots (every 15 min while open, from 30 min from now) ----------
@@ -438,12 +462,25 @@
   const isDelivery = () => $('#ot-delivery').checked && cat.delivery.enabled;
   const deliveryFee = () => (cart.length && isDelivery() && pin?.feeCents != null ? pin.feeCents : 0);
   // Promo code discount: same rule as the server (lib/promocodes.js): items only, whole pesos.
-  const codeOff = (sub) => {
+  // "Buy this, get that" codes: same rules as the server (lib/promocodes.js → bogoReward).
+  function bogoReward(b, lines, used) {
+    const units = [];
+    lines.forEach((l, i) => { const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); for (let k = used?.get(i) || 0; k < l.qty; k++) units.push({ id: l.id, base }); });
+    const getU = units.filter(u => b.getIds.includes(u.id)).sort((x, y) => x.base - y.base), buyU = units.filter(u => b.buyIds.includes(u.id)), per = Math.max(1, b.buyQty || 1);
+    let best = 0;
+    for (let r = 1; r <= getU.length && (!b.max || r <= b.max); r++) { const chosen = new Set(getU.slice(0, r)); if (buyU.filter(u => !chosen.has(u)).length >= r * per) best = r; else break; }
+    return { offCents: getU.slice(0, best).reduce((a, u) => a + Math.round((u.base * Math.min(100, b.getPct)) / 10000) * 100, 0), rewards: best, need: best ? '' : buyU.length < per ? 'buy' : 'get' };
+  }
+  const pricedLines = () => cart.map(l => ({ id: l.id, qty: l.qty, unitCents: unitOf(l), addons: (l.addons || []).map(id => ({ cents: addonById[id]?.price || 0 })) }));
+  const codeOff = (sub, lines = [], used = null) => {
     if (!promo || sub < (promo.minCents || 0)) return 0;
+    if (promo.kind === 'bogo') return Math.min(bogoReward(promo.bogo, lines, used).offCents, sub);
     let off = Math.round((promo.kind === 'pct' ? (sub * promo.value) / 100 : promo.value) / 100) * 100;
     if (promo.kind === 'pct' && promo.maxOffCents) off = Math.min(off, promo.maxOffCents);
     return Math.max(0, Math.min(off, sub));
   };
+  /** The promo code's discount for the cart as it is now (after Buy 1 Take 1 deals). */
+  const cartCodeOff = () => { const pl = pricedLines(), d = applyDeals(pl, dealsAt(whenAt() || new Date())); return codeOff(subtotal() - d.offCents, pl, d.used); };
   const optsLabel = (o) => (o ? [o.sweet != null ? o.sweet + '% sweet' : null, o.ice].filter(Boolean).join(' · ') : '');
 
   // ---------- drawer ----------
@@ -469,7 +506,10 @@
   const refreshDlg = () => {
     const { addons } = readOpts();
     $('#qVal').textContent = dlgQty;
-    $('#optAdd').textContent = 'Add ' + pesos(unitOf({ id: dlgItem.id, addons }, new Date()) * dlgQty);
+    const unit = unitOf({ id: dlgItem.id, addons }, new Date());
+    // Show the deal price too, e.g. "Add ₱238 · ₱149 with Okinawa for 2" (the cart applies it).
+    const dl = cat.deals ? applyDeals([{ id: dlgItem.id, qty: dlgQty, unitCents: unit, addons: addons.map(id => ({ cents: addonById[id]?.price || 0 })) }], dealsAt()) : { offCents: 0 };
+    $('#optAdd').textContent = 'Add ' + pesos(unit * dlgQty) + (dl.offCents ? ` · ${pesos(unit * dlgQty - dl.offCents)} with ${dl.applied[0].title}` : '');
   };
   function startAdd(id) {
     const it = byId[id]; if (!it || it.soldOut || it.price == null) return;
@@ -612,14 +652,22 @@
         <div class="stepper"><button type="button" data-q="${i}" data-d="-1" aria-label="Fewer">−</button><span>${l.qty}</span><button type="button" data-q="${i}" data-d="1" aria-label="More">+</button></div>
         ${adds.length ? `<span class="addons">+ ${adds.map(a => `${esc(a.name)} (${pesos(a.price)})`).join(', ')}</span>` : ''}</div>`;
     }).join('') : `<div class="empty">Nothing here yet. Tap <b>Add +</b> on anything from the menu.</div>`;
-    const sub = subtotal(), fee = deliveryFee(), del = isDelivery(), disc = codeOff(sub);
-    $('#sums').hidden = (!del && !disc) || !cart.length; $('#subTotal').textContent = pesos(sub); $('#feeTotal').textContent = pin?.feeCents != null ? pesos(fee) : '—';
+    const at = whenAt() || new Date();
+    const pl = pricedLines(), deal = applyDeals(pl, dealsAt(at));
+    const gross = subtotal(), sub = gross - deal.offCents; // promo codes apply to what's left after the deal
+    const fee = deliveryFee(), del = isDelivery(), disc = codeOff(sub, pl, deal.used);
+    const bogoNeed = promo?.kind === 'bogo' && cart.length && !disc ? bogoReward(promo.bogo, pl, deal.used).need : '';
+    $('#dealLbl').hidden = $('#dealTotal').hidden = !deal.offCents;
+    $('#dealLbl').textContent = `🎉 ${deal.applied.map(a => a.title + (a.pairs > 1 ? ` ×${a.pairs}` : '')).join(', ')}`; $('#dealTotal').textContent = '−' + pesos(deal.offCents);
+    $('#dealHint').hidden = !(cart.length && deal.waiting.length);
+    if (deal.waiting.length) { const w = deal.waiting[0]; $('#dealHint').innerHTML = `🎉 Add 1 more from <b>${esc(w.title)}</b> and ${esc(dealWhat(w))}! <button class="linkbtn" type="button" data-f-deal="${esc(w.id)}">See items</button>`; }
+    $('#sums').hidden = (!del && !disc && !deal.offCents) || !cart.length; $('#subTotal').textContent = pesos(gross); $('#feeTotal').textContent = pin?.feeCents != null ? pesos(fee) : '—';
     $('#feeLbl').hidden = $('#feeTotal').hidden = !del;
     $('#discLbl').hidden = $('#discTotal').hidden = !disc; $('#discTotal').textContent = '−' + pesos(disc);
     $('#discLbl').textContent = promo ? `Promo ${promo.code}` : 'Discount';
     $('#codeRow').hidden = !!promo; $('#codeOn').hidden = !promo;
-    if (promo) $('#codeOn').innerHTML = `<span><b>${esc(promo.code)}</b> · ${esc(promo.label)}${disc ? ` · <b>−${pesos(disc)}</b>` : cart.length && sub < promo.minCents ? `<br><small>Add ${pesos(promo.minCents - sub)} more to use this code (minimum ${pesos(promo.minCents)}).</small>` : ''}</span><button class="linkbtn" type="button" id="codeRemove">Remove</button>`;
-    const totalNow = sub - disc + fee;
+    if (promo) $('#codeOn').innerHTML = `<span><b>${esc(promo.code)}</b> · ${esc(promo.label)}${disc ? ` · <b>−${pesos(disc)}</b>` : bogoNeed ? `<br><small>${bogoNeed === 'buy' ? `Buy ${promo.bogo.buyQty > 1 ? promo.bogo.buyQty + ' × ' : ''}${esc(promo.bogo.buyLabel)} to use this code.` : `Add ${esc(promo.bogo.getLabel)} to your order. It's ${promo.bogo.getPct >= 100 ? 'free' : promo.bogo.getPct + '% off'} with this code!`} <button class="linkbtn" type="button" data-bogo-show="${bogoNeed}">Show me</button></small>` : cart.length && sub < promo.minCents ? `<br><small>Add ${pesos(promo.minCents - sub)} more to use this code (minimum ${pesos(promo.minCents)}).</small>` : ''}</span><button class="linkbtn" type="button" id="codeRemove">Remove</button>`;
+    const totalNow = gross - deal.offCents - disc + fee;
     $('#total').textContent = pesos(totalNow);
     let why = '';
     if (apiState === 'loading') why = 'Connecting to the order system…';
@@ -637,7 +685,7 @@
     btn.disabled = busy || !cart.length || !!why;
     btn.textContent = busy ? 'Sending…' : !cart.length ? 'Place order'
       : pm === 'qrph' ? `Continue to pay ${pesos(totalNow)}` : ['gcash', 'paymaya', 'card'].includes(pm) ? `Pay ${pesos(totalNow)} with ${PAY[pm]}` : `Place order · ${pesos(totalNow)}`;
-    renderAgain();
+    renderAgain(); renderPromoChip();
     if (!busy && !$('#orderNote').classList.contains('err')) setNote(why || (!cart.length ? '' : pm === 'counter' ? (del ? 'Pay the rider in cash when your order arrives.' : 'Pay with cash or GCash at the counter when you pick up.') : pm === 'qrph' ? "Next, you'll see our GCash QR to scan and pay." : `You'll be taken to ${PAY[pm]} to pay securely through PayMongo.`));
   }
   $('#lines').addEventListener('click', e => {
@@ -661,6 +709,136 @@
   $('#codeApply').onclick = applyCode;
   $('#o-code').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } });
   $('#codeOn').addEventListener('click', e => { if (e.target.closest('#codeRemove')) { promo = null; ls.set('dd-code', null); setNote(''); renderCart(); } });
+
+  // ---------- promo pop-ups: Buy 1 Take 1 deals and promo codes the shop chose to advertise ----------
+  // Each one pops up on its own, once per phone, a few seconds after the site opens. When it's closed,
+  // the next one appears 2 seconds later, and so on. The banner above the menu reopens them any time.
+  const ppDlg = $('#promoDlg');
+  let ppList = [], ppIdx = 0, ppQueue = [], ppAuto = false, ppStarted = false, ppTimer = null;
+  const ppSeen = () => ls.get('dd-popup-seen', {});
+  const ppMark = (key) => { const s2 = ppSeen(); s2[key] = Date.now(); ls.set('dd-popup-seen', s2); };
+  const niceEnd = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const dayNames = (days) => days.length === 7 ? 'Every day' : days.map(d => ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d]).join(', ');
+  /** Everything that can pop up right now: deals first, then promo codes. */
+  function ppItems() {
+    const deals = (cat.deals || []).filter(d => d.popup && dealOn(d) && d.productIds.some(id => byId[id] && byId[id].price != null && !byId[id].soldOut))
+      .map(d => ({ type: 'deal', key: 'deal:' + d.id, d }));
+    const codes = (cat.featured || []).map(c => ({ type: 'code', key: c.code, c }));
+    return [...deals, ...codes];
+  }
+  function drawPopup() {
+    const x = ppList[ppIdx]; if (!x) return;
+    const isDeal = x.type === 'deal';
+    ppDlg.classList.toggle('is-deal', isDeal);
+    if (isDeal) {
+      const d = x.d, items = d.productIds.map(id => byId[id]).filter(it => it && it.price != null);
+      $('#ppEyebrow').textContent = '🎉 Buy 1 Take 1';
+      $('#ppTitle').textContent = d.title;
+      $('#ppText').textContent = d.description; $('#ppText').hidden = !d.description;
+      $('#ppCode').textContent = 'BUY 1 TAKE 1'; $('#ppLabel').textContent = d.pairCents != null ? `2 for ${pesos(d.pairCents)}` : 'The 2nd one is free';
+      $('#ppRules').textContent = [items.slice(0, 3).map(i => i.name).join(', ') + (items.length > 3 ? ` +${items.length - 3} more` : ''),
+        d.days?.length ? dayNames(d.days) : '', d.endsOn ? `Until ${niceEnd(d.endsOn)}` : '', d.maxPairs ? `Up to ${d.maxPairs} per order` : '',
+        d.channel === 'both' ? 'Online & in store' : 'Online orders'].filter(Boolean).join(' · ');
+      $('#ppUse').textContent = items.length === 1 ? `Order 2 ${items[0].name}` : 'Choose your drinks'; $('#ppUse').disabled = false;
+      $('#ppCopy').hidden = true;
+    } else {
+      const c = x.c;
+      $('#ppEyebrow').textContent = '🎟️ Promo code';
+      $('#ppTitle').textContent = c.title || (c.kind === 'bogo' ? `${c.label}!` : `Get ${c.label} today!`);
+      $('#ppText').textContent = c.text; $('#ppText').hidden = !c.text;
+      $('#ppCode').textContent = c.code; $('#ppLabel').textContent = c.label;
+      $('#ppRules').textContent = [c.minCents ? `Minimum order ${pesos(c.minCents)}` : '', c.endsOn ? `Until ${niceEnd(c.endsOn)}` : '',
+        c.channel === 'both' ? 'Online, or show this code at the counter' : 'For online orders'].filter(Boolean).join(' · ');
+      const using = promo?.code === c.code;
+      $('#ppUse').textContent = using ? '✓ Applied to your order' : 'Use this code'; $('#ppUse').disabled = using;
+      $('#ppCopy').hidden = false;
+    }
+    // Opened from the banner: show the others to switch between. While popping up one by one: just this one.
+    const others = ppAuto ? [] : ppList.filter((_, i) => i !== ppIdx);
+    $('#ppOthers').hidden = !others.length;
+    $('#ppOthers').innerHTML = others.length ? `<span>More promos:</span>${others.map(o => `<button type="button" data-pp="${esc(o.key)}">${o.type === 'deal' ? '🎉 ' + esc(o.d.title) : esc(o.c.code) + ' · ' + esc(o.c.label)}</button>`).join('')}` : '';
+    ppMark(x.key);
+  }
+  function openPopup(key, auto = false) {
+    ppList = ppItems(); if (!ppList.length) return;
+    ppAuto = auto;
+    ppIdx = Math.max(0, ppList.findIndex(x => x.key === key));
+    drawPopup();
+    if (!ppDlg.open) ppDlg.showModal();
+    renderPromoChip();
+  }
+  const closePopup = () => { if (ppDlg.open) ppDlg.close(); };
+  $('#ppClose').onclick = $('#ppLater').onclick = closePopup;
+  ppDlg.addEventListener('click', e => { if (e.target === ppDlg) closePopup(); }); // tap outside to close
+  // When one closes (by any button, Esc or tapping outside), the next unseen one shows 2 seconds later.
+  ppDlg.addEventListener('close', () => {
+    if (!ppAuto) return;
+    clearTimeout(ppTimer);
+    ppTimer = setTimeout(function next() {
+      const key = ppQueue.shift(); if (!key) { ppAuto = false; return; }
+      if (!ppItems().some(x => x.key === key) || (promo && !key.startsWith('deal:'))) return next();
+      if (document.querySelector('dialog[open]') || drawer.classList.contains('open') || document.hidden) { ppQueue.unshift(key); ppTimer = setTimeout(next, 4000); return; }
+      openPopup(key, true);
+    }, 2000);
+  });
+  $('#ppOthers').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (b) { ppIdx = ppList.findIndex(x => x.key === b.dataset.pp); drawPopup(); } });
+  $('#ppCopy').onclick = async () => {
+    const code = ppList[ppIdx]?.c?.code; if (!code) return;
+    try { await navigator.clipboard.writeText(code); toast(`${code} copied`); } catch { toast(`Your code: ${code}`); }
+  };
+  $('#ppUse').onclick = async () => {
+    const x = ppList[ppIdx]; if (!x) return;
+    if (x.type === 'deal') {
+      const items = x.d.productIds.filter(id => byId[id] && byId[id].price != null && !byId[id].soldOut);
+      ppQueue = []; ppAuto = false; closePopup();
+      if (items.length === 1) { startAdd(items[0]); dlgQty = 2; refreshDlg(); return; }
+      filter = 'deal:' + x.d.id; renderFilters(); render();
+      document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' });
+      toast(`Pick any 2: ${dealWhat(x.d)}`);
+      return;
+    }
+    const c = x.c;
+    $('#o-code').value = c.code; await applyCode();
+    if (promo?.code === c.code) {
+      ppQueue = []; ppAuto = false; closePopup();
+      if (cart.length) openDrawer(); else toast(`${c.code} is saved. Add your drinks and it's taken off at checkout.`);
+      document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' });
+    } else drawPopup();
+  };
+  // Banner above the menu, so promos are easy to find again.
+  function renderPromoChip() {
+    const box = $('#statusBar');
+    box.querySelectorAll('.sb.code').forEach(x => x.remove());
+    const list = cat.deals ? ppItems() : (cat.featured || []).map(c => ({ type: 'code', key: c.code, c }));
+    if (!list.length) { if (!box.children.length) box.hidden = true; return; }
+    const applied = list.find(x => x.type === 'code' && x.c.code === promo?.code);
+    const x = applied || list[0];
+    const text = x.type === 'deal' ? `🎉 <b>${esc(x.d.title)}</b>: ${esc(dealWhat(x.d))}`
+      : applied ? `✅ <b>${esc(x.c.code)}</b> applied: ${esc(x.c.label)}` : `🎟️ Use code <b>${esc(x.c.code)}</b> for ${esc(x.c.label)}`;
+    box.insertAdjacentHTML('afterbegin', `<button type="button" class="sb code" data-open-pp="${esc(x.key)}">${text}${list.length > 1 ? ` · +${list.length - 1} more` : ''}</button>`);
+    box.hidden = false;
+  }
+  $('#statusBar').addEventListener('click', e => { const b = e.target.closest('[data-open-pp]'); if (b) { ppQueue = []; openPopup(b.dataset.openPp); } });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-bogo-show]'); if (!b || promo?.kind !== 'bogo') return;
+    bogoFilter = b.dataset.bogoShow === 'buy' ? promo.bogo.buyIds : promo.bogo.getIds; filter = 'bogo'; renderFilters(); render(); closeDrawer();
+    document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' });
+  });
+  document.addEventListener('click', e => { const b = e.target.closest('[data-f-deal]'); if (!b) return; filter = 'deal:' + b.dataset.fDeal; renderFilters(); render(); closeDrawer(); document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth' }); });
+  // First pop-up a few seconds after the menu loads (once per visit; not while something else is open).
+  function maybeAutoPopup() {
+    renderPromoChip();
+    if (ppStarted) return;
+    // Only one code works per order, so once a code is applied, other codes don't pop up (deals still do).
+    const fresh = ppItems().filter(x => !ppSeen()[x.key] && !(x.type === 'code' && promo)).map(x => x.key);
+    if (!fresh.length) return;
+    ppStarted = true; ppQueue = fresh.slice(1);
+    clearTimeout(ppTimer);
+    ppTimer = setTimeout(function tryOpen() {
+      if (document.querySelector('dialog[open]') || drawer.classList.contains('open') || document.hidden) { ppTimer = setTimeout(tryOpen, 4000); return; }
+      openPopup(fresh[0], true);
+    }, 3000);
+  }
 
   // ---------- order again (past orders are remembered on this phone) ----------
   const lineName = (l) => `${byId[l.id]?.name || ''}${l.qty > 1 ? ' × ' + l.qty : ''}`;
@@ -841,7 +1019,7 @@
         orderType: del ? 'delivery' : 'pickup', pickupMinutes: +$('#o-pickup').value, scheduleAt: whenAt()?.toISOString(),
         delivery: del ? { lat: pin.lat, lng: pin.lng, address: contact.address, landmark: contact.landmark, phone: contact.phone } : undefined,
         items: cart.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons })),
-        promoCode: promo && codeOff(subtotal()) ? promo.code : undefined,
+        promoCode: promo && cartCodeOff() ? promo.code : undefined,
       }) });
       mine = [{ ...o, at: Date.now() }, ...mine].slice(0, 5);
       history = [{ at: Date.now(), code: o.code, totalCents: o.totalCents, lines: cart.map(({ key, id, qty, opts, addons }) => ({ key, id, qty, opts, addons })) }, ...history].slice(0, 6);
@@ -903,7 +1081,7 @@
     apiState = 'ready';
     if (pin && cat.delivery.enabled) pin = { ...quote(pin.lat, pin.lng) };
     lastSig = promoSig();
-    render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart();
+    render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart(); maybeAutoPopup();
   }
   async function loadMenu() {
     try { apply(await api('/api/menu')); checkBuild(cat.build); }

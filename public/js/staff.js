@@ -35,6 +35,25 @@
     return best;
   };
   const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  // Buy 1 Take 1: same rules as the server (lib/deals.js). The server always re-checks.
+  const dealOn = (d, t = new Date()) => {
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: catalog.tz || 'Asia/Manila' }).format(new Date(t - 4 * 3600e3)); // business date
+    return !(d.startsOn && day < d.startsOn) && !(d.endsOn && day > d.endsOn) && !(d.days?.length && !d.days.includes(cafeClock(t, catalog.tz).dow));
+  };
+  function applyDeals(lines, deals) {
+    const used = new Map(), applied = [], waiting = []; let total = 0;
+    for (const d of deals || []) {
+      const units = [];
+      lines.forEach((l, i) => { if (!d.productIds.includes(l.id)) return; const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); for (let k = used.get(i) || 0; k < l.qty; k++) units.push({ i, base }); });
+      units.sort((a, b) => b.base - a.base);
+      let pairs = Math.floor(units.length / 2); if (d.maxPairs) pairs = Math.min(pairs, d.maxPairs);
+      let off = 0;
+      for (let p = 0; p < pairs; p++) { const a = units[2 * p], b = units[2 * p + 1]; off += a.base + b.base - (d.pairCents != null ? Math.min(d.pairCents, a.base + b.base) : a.base); used.set(a.i, (used.get(a.i) || 0) + 1); used.set(b.i, (used.get(b.i) || 0) + 1); }
+      if (pairs && off > 0) { applied.push({ id: d.id, title: d.title, pairs, offCents: off }); total += off; }
+      if (units.length % 2 === 1 && (!d.maxPairs || pairs < d.maxPairs)) waiting.push(d);
+    }
+    return { offCents: total, applied, waiting, used };
+  }
   const fmtWhen = (v) => { const d = new Date(v), t = new Date(); const same = d.toDateString() === t.toDateString(); const tm = new Date(t); tm.setDate(t.getDate() + 1);
     return `${same ? 'Today' : d.toDateString() === tm.toDateString() ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${fmtTime(v)}`; };
 
@@ -216,7 +235,7 @@
     if (link?.hidden) tab = 'board';
     TABS.forEach(t => { $('#view-' + t).hidden = t !== tab; });
     $$('.tabs a').forEach(a => a.dataset.tab === tab ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); }, pos: renderPosMenu, activity: loadActivity }[tab] || (() => {}))();
+    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); loadDeals(); }, pos: renderPosMenu, activity: loadActivity }[tab] || (() => {}))();
   }
   window.addEventListener('hashchange', route);
 
@@ -563,29 +582,44 @@
   let posCode = null; // promo code checked at the POS
   let posCodes = null, posCodesAt = 0; // saved codes listed under the code box
   // Same rules as the server (lib/promocodes.js, lib/staff/pos.js).
-  const codeOff = (c, sub) => { if (!c || sub < (c.minCents || 0)) return 0; let off = Math.round((c.kind === 'pct' ? (sub * c.value) / 100 : c.value) / 100) * 100; if (c.kind === 'pct' && c.maxOffCents) off = Math.min(off, c.maxOffCents); return Math.max(0, Math.min(off, sub)); };
+  // "Buy this, get that" codes: same rules as the server (lib/promocodes.js → bogoReward).
+  function bogoReward(b, lines, used) {
+    const units = [];
+    lines.forEach((l, i) => { const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); for (let k = used?.get(i) || 0; k < l.qty; k++) units.push({ id: l.id, base }); });
+    const getU = units.filter(u => b.getIds.includes(u.id)).sort((x, y) => x.base - y.base), buyU = units.filter(u => b.buyIds.includes(u.id)), per = Math.max(1, b.buyQty || 1);
+    let best = 0;
+    for (let r = 1; r <= getU.length && (!b.max || r <= b.max); r++) { const chosen = new Set(getU.slice(0, r)); if (buyU.filter(u => !chosen.has(u)).length >= r * per) best = r; else break; }
+    return { offCents: getU.slice(0, best).reduce((a, u) => a + Math.round((u.base * Math.min(100, b.getPct)) / 10000) * 100, 0), rewards: best, need: best ? '' : buyU.length < per ? 'buy' : 'get' };
+  }
+  const bogoNeedText = (c, need) => need === 'buy' ? `${c.code}: buy ${c.bogo.buyQty > 1 ? c.bogo.buyQty + ' × ' : ''}${c.bogo.buyLabel} first.` : `${c.code}: add ${c.bogo.getLabel} (${c.bogo.getPct >= 100 ? 'free' : c.bogo.getPct + '% off'}).`;
+  const codeOff = (c, sub, lines = [], used = null) => { if (!c || sub < (c.minCents || 0)) return 0; if (c.kind === 'bogo') return Math.min(bogoReward(c.bogo, lines, used).offCents, sub); let off = Math.round((c.kind === 'pct' ? (sub * c.value) / 100 : c.value) / 100) * 100; if (c.kind === 'pct' && c.maxOffCents) off = Math.min(off, c.maxOffCents); return Math.max(0, Math.min(off, sub)); };
   const posTotals = () => {
-    const sub = ticketLines.reduce((a, l) => a + posUnit(l) * l.qty, 0);
+    const gross = ticketLines.reduce((a, l) => a + posUnit(l) * l.qty, 0);
+    const A = addonById();
+    const pl = ticketLines.map(l => ({ id: l.id, qty: l.qty, unitCents: posUnit(l), addons: (l.addons || []).map(id => ({ cents: A[id]?.price || 0 })) }));
+    const deal = applyDeals(pl, (catalog.deals || []).filter(x => dealOn(x)));
+    const sub = gross - deal.offCents; // other discounts are on the price after the deal
     const d = $('#posDisc').value;
     let disc = 0, label = DISC_LABEL[d] || '';
     if (DISC[d]) disc = Math.round(sub * DISC[d] / 100);
-    else if (d === 'code') { disc = codeOff(posCode, sub); label = posCode ? `Promo ${posCode.code}` : 'Promo code'; }
+    else if (d === 'code') { disc = codeOff(posCode, sub, pl, deal.used); label = posCode ? `Promo ${posCode.code}` : 'Promo code'; }
     else if (d === 'custom') {
       const v = parseFloat($('#posCustVal').value) || 0, pctK = $('#posCustKind').value === 'pct';
       disc = pctK ? (Number.isInteger(v) && v >= 1 && v <= 100 ? Math.round((sub * v) / 100) : 0) : Math.min(Math.round(v * 100), sub);
       label = `Discount ${pctK ? v + '%' : money(Math.round(v * 100))}`;
     }
-    return { sub, disc, total: sub - disc, label };
+    const need = posCode?.kind === 'bogo' && !disc ? bogoReward(posCode.bogo, pl, deal.used).need : '';
+    return { gross, deal, sub, disc, total: sub - disc, label, need };
   };
   function renderPosMenu() {
     const cats = ['all', ...Object.keys(CAT)];
     $('#posCats').innerHTML = cats.map(c => `<button type="button" data-c="${c}" aria-pressed="${posCat === c}">${c === 'all' ? 'All' : CAT[c]}</button>`).join('');
     const q = $('#posSearch').value.trim().toLowerCase();
     $('#posGrid').innerHTML = catalog.products.filter(p => (posCat === 'all' || p.cat === posCat) && (!q || p.name.toLowerCase().includes(q))).map(p => {
-      const off = p.soldOut || p.price == null, pr = posPromo(p);
+      const off = p.soldOut || p.price == null, pr = posPromo(p), dl = (catalog.deals || []).find(x => x.productIds.includes(p.id) && dealOn(x));
       return `<button class="pos-item ${p.soldOut ? 'sold' : ''} ${pr ? 'promo' : ''}" type="button" data-pos="${p.id}" ${off ? 'disabled' : ''}>
         <small>${p.soldOut ? 'Sold out' : p.price == null ? 'No price yet' : pr ? `${esc(pr.promo.name)} −${pr.promo.pct}%` : CAT[p.cat]}${p.stock != null && !p.soldOut ? ` · ${p.stock} left` : ''}</small>
-        <b>${esc(p.name)}</b><span>${p.price == null ? '—' : pr ? `<s>${money(p.price)}</s> ${money(p.price - pr.off)}` : money(p.price)}</span></button>`;
+        ${dl ? '<i class="b1t1-tag">B1T1</i>' : ''}<b>${esc(p.name)}</b><span>${p.price == null ? '—' : pr ? `<s>${money(p.price)}</s> ${money(p.price - pr.off)}` : money(p.price)}</span></button>`;
     }).join('');
   }
   $('#posCats').addEventListener('click', e => { const b = e.target.closest('[data-c]'); if (!b) return; posCat = b.dataset.c; renderPosMenu(); });
@@ -628,14 +662,14 @@
     $('#posDiscIdF').hidden = !(d === 'senior' || d === 'pwd');
     $('#posCodeF').hidden = d !== 'code'; $('#posCustomF').hidden = d !== 'custom';
     renderPosCodes();
-    $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.sub)}</dd>${t.disc ? `<dt>${esc(t.label)}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
+    $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.gross)}</dd>${t.deal.applied.map(a => `<dt>🎉 ${esc(a.title)}${a.pairs > 1 ? ` ×${a.pairs}` : ''}</dt><dd>−${money(a.offCents)}</dd>`).join('')}${t.deal.waiting.length ? `<dt class="deal-hint" style="grid-column:1/-1">Add 1 more for ${esc(t.deal.waiting[0].title)}</dt>` : ''}${t.disc ? `<dt>${esc(t.label)}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
     posPay.redraw();
   }
   function updateCharge() {
     if (!me) return;
     const t = posTotals(), v = posPay.value(), d = $('#posDisc').value;
     const needId = (d === 'senior' || d === 'pwd') && !$('#posDiscId').value.trim();
-    const discWhy = d === 'code' ? (!posCode ? 'Type the promo code and tap Check.' : t.sub < posCode.minCents ? `${posCode.code} needs a minimum order of ${money(posCode.minCents)}.` : '')
+    const discWhy = d === 'code' ? (!posCode ? 'Type the promo code and tap Check.' : t.need ? bogoNeedText(posCode, t.need) : t.sub < posCode.minCents ? `${posCode.code} needs a minimum order of ${money(posCode.minCents)}.` : '')
       : d === 'custom' ? (!t.disc ? 'Enter the discount amount.' : $('#posCustWhy').value.trim().length < 3 ? 'Write the reason for the discount.' : '') : '';
     const btn = $('#posCharge');
     btn.disabled = !ticketLines.length || posBusy || !me.shift || needId || !!discWhy || !!v.error;
@@ -1310,26 +1344,175 @@
         <td>${esc(c.label)}</td><td><small>${esc(rules)}</small>${ended ? '<br><small class="bad">Ended</small>' : used ? '<br><small class="bad">Used up</small>' : ''}</td>
         <td class="num">${c.uses}${c.maxUses != null ? ` / ${c.maxUses}` : ''}</td><td class="num">${money(c.givenCents)}</td>
         <td><label class="switchrow sm"><input type="checkbox" class="toggle" data-code-active ${c.active ? 'checked' : ''}> ${c.active ? 'On' : 'Off'}</label></td>
-        <td><button type="button" class="linkbtn bad" data-code-del>Delete</button></td></tr>`;
-    }).join('') || '<tr><td colspan="7" class="hint">No promo codes yet. Create one above.</td></tr>';
+        <td>${c.channel === 'pos' ? '<small class="hint">In store only</small>' : `<label class="switchrow sm"><input type="checkbox" class="toggle" data-code-popup ${c.popup ? 'checked' : ''}> ${c.popup ? (c.active && !ended && !used ? '📣 Showing' : 'On (not showing: code off/ended)') : 'Off'}</label>
+          ${c.popup ? `<br><small class="hint">${esc(c.popupTitle || 'Default headline')}</small> <button type="button" class="linkbtn" data-code-popedit>Edit text</button>` : ''}`}</td>
+        <td><button type="button" class="linkbtn" data-code-edit>Edit</button> <button type="button" class="linkbtn bad" data-code-del>Delete</button></td></tr>`;
+    }).join('') || '<tr><td colspan="8" class="hint">No promo codes yet. Create one above.</td></tr>';
   }
-  $('#cfKind').onchange = () => { $('#cfMaxF').hidden = $('#cfKind').value !== 'pct'; $('#cfValue').placeholder = $('#cfKind').value === 'pct' ? '20' : '50'; };
+  $('#cfKind').onchange = () => {
+    const k = $('#cfKind').value;
+    $('#cfMaxF').hidden = k !== 'pct'; $('#cfValue').hidden = k === 'bogo'; $('#cfBogo').hidden = k !== 'bogo';
+    $('#cfValue').placeholder = k === 'pct' ? '20' : '50';
+    if (k === 'bogo') { bgBuy.draw(); bgGet.draw(); bogoPreview(); }
+  };
+  // Item pickers for "Buy this, get that" (search + category + tick the items).
+  function itemPicker(root) {
+    const set = new Set();
+    root.innerHTML = `<div class="deal-pick-bar"><input type="search" placeholder="Search menu…" aria-label="Search menu"><select aria-label="Category"></select><button class="linkbtn" type="button" data-all>Pick all shown</button><button class="linkbtn" type="button" data-none>Clear</button><span class="hint" data-count></span></div><div class="deal-pick"></div>`;
+    const [q, c] = [root.querySelector('input'), root.querySelector('select')], list = root.querySelector('.deal-pick');
+    const draw = () => {
+      if (c.options.length <= 1) c.innerHTML = '<option value="">All categories</option>' + Object.entries(CAT).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+      const qq = q.value.trim().toLowerCase(), cc = c.value;
+      list.innerHTML = catalog.products.filter(p => p.price != null && (!cc || p.cat === cc) && (!qq || p.name.toLowerCase().includes(qq)))
+        .map(p => `<label class="pick ${set.has(p.id) ? 'on' : ''}"><input type="checkbox" data-pid="${esc(p.id)}" ${set.has(p.id) ? 'checked' : ''}><span>${esc(p.name)}</span><small>${money(p.price)}</small></label>`).join('') || '<p class="hint">No items match.</p>';
+      root.querySelector('[data-count]').textContent = `${set.size} picked`;
+    };
+    q.addEventListener('input', draw); c.addEventListener('input', draw);
+    list.addEventListener('change', e => { const id = e.target.dataset.pid; if (!id) return; e.target.checked ? set.add(id) : set.delete(id); e.target.closest('.pick').classList.toggle('on', e.target.checked); root.querySelector('[data-count]').textContent = `${set.size} picked`; bogoPreview(); });
+    root.querySelector('[data-all]').onclick = () => { list.querySelectorAll('[data-pid]').forEach(i => set.add(i.dataset.pid)); draw(); bogoPreview(); };
+    root.querySelector('[data-none]').onclick = () => { set.clear(); draw(); bogoPreview(); };
+    return { set, draw, fill(ids) { set.clear(); (ids || []).forEach(i => set.add(i)); q.value = ''; c.value = ''; draw(); } };
+  }
+  const bgBuy = itemPicker($('#bgBuy')), bgGet = itemPicker($('#bgGet'));
+  const bgPctVal = () => ($('#bgPct').value === 'custom' ? $('#bgPctOther').value : $('#bgPct').value);
+  function bogoPreview() {
+    const P = prodById(), nm = (set, custom) => custom || (set.size <= 2 ? [...set].map(id => P[id]?.name).join(' or ') : `any of ${set.size} items`);
+    const pct = +bgPctVal() || 0, qty = +$('#bgBuyQty').value || 1;
+    $('#bgPreview').innerHTML = bgBuy.set.size && bgGet.set.size
+      ? `Customers see: <b>Buy ${qty > 1 ? qty + ' × ' : ''}${esc(nm(bgBuy.set, $('#bgBuyLabel').value.trim()))}, get ${esc(nm(bgGet.set, $('#bgGetLabel').value.trim()))} ${pct >= 100 ? 'free' : pct + '% off'}</b>${$('#bgMax').value ? ` · up to ${$('#bgMax').value} per order` : ''}`
+      : 'Pick what customers buy and what they get.';
+  }
+  $('#bgPct').onchange = () => { $('#bgPctOtherF').hidden = $('#bgPct').value !== 'custom'; bogoPreview(); };
+  ['#bgBuyQty', '#bgBuyLabel', '#bgGetLabel', '#bgMax', '#bgPctOther'].forEach(id => $(id).addEventListener('input', bogoPreview));
+  let codeEdit = null;
+  function editCode(c) {
+    codeEdit = c;
+    $('#cfCode').value = c.code; $('#cfCode').readOnly = true; $('#cfGen').hidden = true;
+    $('#cfKind').value = c.kind; $('#cfValue').value = c.kind === 'fixed' ? c.value / 100 : c.kind === 'pct' ? c.value : '';
+    $('#cfMax').value = c.maxOffCents ? c.maxOffCents / 100 : ''; $('#cfMin').value = c.minCents ? c.minCents / 100 : '';
+    $('#cfStart').value = c.startsOn || ''; $('#cfEnd').value = c.endsOn || ''; $('#cfUses').value = c.maxUses ?? ''; $('#cfChannel').value = c.channel; $('#cfNote').value = c.note || '';
+    $('#cfPopup').checked = c.popup; $('#cfPopupMore').hidden = !c.popup; $('#cfPopTitle').value = c.popupTitle || ''; $('#cfPopText').value = c.popupText || '';
+    if (c.kind === 'bogo' && c.bogo) {
+      bgBuy.fill(c.bogo.buyIds); bgGet.fill(c.bogo.getIds); $('#bgBuyQty').value = c.bogo.buyQty || 1; $('#bgMax').value = c.bogo.max ?? '';
+      const preset = ['100', '50', '30', '20'].includes(String(c.bogo.getPct)); $('#bgPct').value = preset ? String(c.bogo.getPct) : 'custom'; $('#bgPctOther').value = preset ? '' : c.bogo.getPct; $('#bgPctOtherF').hidden = preset;
+      const auto = (ids) => ids.length <= 2; $('#bgBuyLabel').value = auto(c.bogo.buyIds) ? '' : c.bogo.buyLabel; $('#bgGetLabel').value = auto(c.bogo.getIds) ? '' : c.bogo.getLabel;
+    }
+    $('#cfKind').onchange(); $('#cfSubmit').textContent = `Save ${c.code}`; $('#cfCancelEdit').hidden = false;
+    $('#codeForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  function resetCodeForm() {
+    codeEdit = null; $('#codeForm').reset(); $('#cfCode').readOnly = false; $('#cfGen').hidden = false; bgBuy.fill([]); bgGet.fill([]);
+    $('#cfPopupMore').hidden = true; $('#bgPctOtherF').hidden = true; $('#cfSubmit').textContent = 'Create code'; $('#cfCancelEdit').hidden = true; $('#cfKind').onchange();
+  }
+  $('#cfCancelEdit').onclick = resetCodeForm;
   $('#cfGen').onclick = () => { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; $('#cfCode').value = 'DD' + Array.from(crypto.getRandomValues(new Uint8Array(5)), b => A[b % A.length]).join(''); };
   $('#codeForm').addEventListener('submit', async e => {
     e.preventDefault();
     const body = { code: $('#cfCode').value, kind: $('#cfKind').value, value: $('#cfValue').value, maxOff: $('#cfKind').value === 'pct' ? $('#cfMax').value : '',
-      minOrder: $('#cfMin').value, startsOn: $('#cfStart').value, endsOn: $('#cfEnd').value, maxUses: $('#cfUses').value, channel: $('#cfChannel').value, note: $('#cfNote').value };
-    try { const c = await api('/api/staff/codes', { method: 'POST', body }); toast(`Code ${c.code} created: ${c.label}`); $('#codeForm').reset(); $('#cfKind').onchange(); loadCodes(); } catch (err) { fail(err); }
+      bogo: $('#cfKind').value === 'bogo' ? { buyIds: [...bgBuy.set], buyQty: $('#bgBuyQty').value, buyLabel: $('#bgBuyLabel').value, getIds: [...bgGet.set], getLabel: $('#bgGetLabel').value, getPct: bgPctVal(), max: $('#bgMax').value } : undefined,
+      minOrder: $('#cfMin').value, startsOn: $('#cfStart').value, endsOn: $('#cfEnd').value, maxUses: $('#cfUses').value, channel: $('#cfChannel').value, note: $('#cfNote').value,
+      popup: $('#cfPopup').checked, popupTitle: $('#cfPopTitle').value, popupText: $('#cfPopText').value };
+    if (body.kind === 'bogo') delete body.value;
+    try {
+      const c = await api('/api/staff/codes', { method: codeEdit ? 'PUT' : 'POST', body });
+      toast(`${codeEdit ? 'Saved' : 'Created'} ${c.code}: ${c.label}${c.popup ? ' · showing as a pop-up on the website' : ''}`);
+      resetCodeForm(); loadCodes(); loadPosCodes?.(true);
+    } catch (err) { fail(err); }
   });
+  $('#cfPopup').onchange = () => { $('#cfPopupMore').hidden = !$('#cfPopup').checked; };
   $('#codeRows').addEventListener('change', async e => {
-    const tr = e.target.closest('[data-code]'); if (!tr || !e.target.matches('[data-code-active]')) return;
+    const tr = e.target.closest('[data-code]');
+    if (tr && e.target.matches('[data-code-popup]')) {
+      try { await api('/api/staff/codes', { method: 'PUT', body: { code: tr.dataset.code, popup: e.target.checked } }); toast(e.target.checked ? `${tr.dataset.code} now shows as a pop-up on the website` : 'Pop-up switched off'); } catch (err) { fail(err); }
+      return loadCodes();
+    }
+    if (!tr || !e.target.matches('[data-code-active]')) return;
     try { await api('/api/staff/codes', { method: 'PUT', body: { code: tr.dataset.code, active: e.target.checked } }); toast(e.target.checked ? 'Code switched on' : 'Code switched off'); } catch (err) { fail(err); }
     loadCodes();
   });
   $('#codeRows').addEventListener('click', async e => {
-    const tr = e.target.closest('[data-code]'); if (!tr || !e.target.closest('[data-code-del]')) return;
+    const tr = e.target.closest('[data-code]');
+    if (tr && e.target.closest('[data-code-edit]')) return editCode(codesData.codes.find(x => x.code === tr.dataset.code));
+    if (tr && e.target.closest('[data-code-popedit]')) {
+      const c = codesData.codes.find(x => x.code === tr.dataset.code); if (!c) return;
+      const title = prompt(`Pop-up headline for ${c.code} (leave empty for the default):`, c.popupTitle); if (title === null) return;
+      const text = prompt('Message under it (optional):', c.popupText); if (text === null) return;
+      try { await api('/api/staff/codes', { method: 'PUT', body: { code: c.code, popupTitle: title, popupText: text } }); toast('Pop-up text saved'); } catch (err) { fail(err); }
+      return loadCodes();
+    }
+    if (!tr || !e.target.closest('[data-code-del]')) return;
     if (!confirm(`Delete code ${tr.dataset.code}? Customers won't be able to use it. Past orders keep their discount.`)) return;
     try { await api('/api/staff/codes', { method: 'DELETE', body: { code: tr.dataset.code } }); toast('Code deleted'); loadCodes(); } catch (err) { fail(err); }
+  });
+
+  // ===================================================================== BUY 1 TAKE 1 DEALS
+  let dealsData = null, dealEdit = null, dealPick = new Set(), dealDays = new Set();
+  const CHANNEL_D = { both: 'Online & in store', online: 'Online only', pos: 'In store only' };
+  async function loadDeals() { if (!can('settings')) return; try { dealsData = (await api('/api/staff/deals')).deals; renderDeals(); } catch (e) { fail(e); } }
+  const dealWhen = (d) => [d.days?.length ? d.days.map(x => DAY_SHORT[x]).join(', ') : 'Every day', d.startsOn || d.endsOn ? `${d.startsOn || '…'} → ${d.endsOn || '…'}` : '', CHANNEL_D[d.channel], d.maxPairs ? `max ${d.maxPairs}/order` : ''].filter(Boolean).join(' · ');
+  function renderDeals() {
+    const P = prodById(), today = cafeDate(new Date(), 4);
+    $('#dealRows').innerHTML = (dealsData || []).map(d => {
+      const ended = d.endsOn && d.endsOn < today, names = d.productIds.map(id => P[id]?.name || id);
+      return `<tr data-deal="${esc(d.id)}" class="${!d.active || ended ? 'muted-row' : ''}">
+        <td><b>${esc(d.title)}</b>${d.description ? `<br><small class="hint">${esc(d.description)}</small>` : ''}</td>
+        <td><small>${esc(names.slice(0, 4).join(', '))}${names.length > 4 ? ` +${names.length - 4} more` : ''}</small></td>
+        <td>${d.pairCents != null ? `${money(d.pairCents)} for 2` : '2nd one free'}</td>
+        <td><small>${esc(dealWhen(d))}</small>${ended ? '<br><small class="bad">Ended</small>' : ''}</td>
+        <td class="num">${d.orders} order${d.orders === 1 ? '' : 's'}<br><small class="hint">${money(d.givenCents)} off</small></td>
+        <td><label class="switchrow sm"><input type="checkbox" class="toggle" data-deal-active ${d.active ? 'checked' : ''}> ${d.active ? 'On' : 'Off'}</label></td>
+        <td>${d.channel === 'pos' ? '<small class="hint">In store only</small>' : `<label class="switchrow sm"><input type="checkbox" class="toggle" data-deal-popup ${d.popup ? 'checked' : ''}> ${d.popup ? '📣 On' : 'Off'}</label>`}</td>
+        <td><button type="button" class="linkbtn" data-deal-edit>Edit</button> <button type="button" class="linkbtn bad" data-deal-del>Delete</button></td></tr>`;
+    }).join('') || '<tr><td colspan="8" class="hint">No deals yet. Tap "+ New deal".</td></tr>';
+  }
+  function drawDealPicker() {
+    const q = $('#dfSearch').value.trim().toLowerCase(), c = $('#dfCat').value;
+    const list = catalog.products.filter(p => p.price != null && (!c || p.cat === c) && (!q || p.name.toLowerCase().includes(q)));
+    $('#dfItems').innerHTML = list.map(p => `<label class="pick ${dealPick.has(p.id) ? 'on' : ''}"><input type="checkbox" data-dpick="${esc(p.id)}" ${dealPick.has(p.id) ? 'checked' : ''}><span>${esc(p.name)}</span><small>${money(p.price)}</small></label>`).join('') || '<p class="hint">No items match.</p>';
+    $('#dfCount').textContent = `(${dealPick.size} picked)`;
+  }
+  const drawDealDays = () => { $('#dfDays').innerHTML = DAY_ORDER.map(d => `<button type="button" data-dday="${d}" aria-pressed="${dealDays.has(d)}">${DAY_SHORT[d]}</button>`).join(''); };
+  function openDealForm(d) {
+    dealEdit = d || null; dealPick = new Set(d?.productIds || []); dealDays = new Set(d?.days || []);
+    $('#dealFormTitle').textContent = d ? `Edit: ${d.title}` : 'New deal';
+    $('#dfTitle').value = d?.title || ''; $('#dfDesc').value = d?.description || ''; $('#dfPrice').value = d?.pairCents != null ? d.pairCents / 100 : '';
+    $('#dfStart').value = d?.startsOn || ''; $('#dfEnd').value = d?.endsOn || ''; $('#dfMax').value = d?.maxPairs ?? '';
+    $('#dfChannel').value = d?.channel || 'both'; $('#dfPopup').checked = d ? d.popup : true;
+    if (!$('#dfCat').options.length) $('#dfCat').innerHTML = '<option value="">All categories</option>' + Object.entries(CAT).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+    $('#dfSearch').value = ''; drawDealPicker(); drawDealDays();
+    $('#dealForm').hidden = false; $('#dfTitle').focus();
+  }
+  $('#dealNew').onclick = () => openDealForm(null);
+  $('#dfCancel').onclick = () => { $('#dealForm').hidden = true; dealEdit = null; };
+  ['#dfSearch', '#dfCat'].forEach(id => $(id).addEventListener('input', drawDealPicker));
+  $('#dfItems').addEventListener('change', e => { const id = e.target.dataset.dpick; if (!id) return; e.target.checked ? dealPick.add(id) : dealPick.delete(id); e.target.closest('.pick').classList.toggle('on', e.target.checked); $('#dfCount').textContent = `(${dealPick.size} picked)`; });
+  $('#dfAll').onclick = () => { $$('#dfItems [data-dpick]').forEach(i => dealPick.add(i.dataset.dpick)); drawDealPicker(); };
+  $('#dfNone').onclick = () => { dealPick.clear(); drawDealPicker(); };
+  $('#dfDays').addEventListener('click', e => { const b = e.target.closest('[data-dday]'); if (!b) return; const n = +b.dataset.dday; dealDays.has(n) ? dealDays.delete(n) : dealDays.add(n); drawDealDays(); });
+  $('#dealForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const body = { title: $('#dfTitle').value, description: $('#dfDesc').value, productIds: [...dealPick], pairPrice: $('#dfPrice').value, days: [...dealDays],
+      startsOn: $('#dfStart').value, endsOn: $('#dfEnd').value, maxPairs: $('#dfMax').value, channel: $('#dfChannel').value, popup: $('#dfChannel').value !== 'pos' && $('#dfPopup').checked };
+    try {
+      const d = await api('/api/staff/deals', { method: dealEdit ? 'PUT' : 'POST', body: dealEdit ? { id: dealEdit.id, ...body } : body });
+      toast(`${dealEdit ? 'Saved' : 'Created'}: ${d.title}${d.popup && d.active ? ' · showing as a pop-up on the website' : ''}`);
+      $('#dealForm').hidden = true; dealEdit = null; loadDeals(); loadCatalog();
+    } catch (err) { fail(err); }
+  });
+  $('#dealRows').addEventListener('change', async e => {
+    const tr = e.target.closest('[data-deal]'); if (!tr) return;
+    const f = e.target.matches('[data-deal-active]') ? 'active' : e.target.matches('[data-deal-popup]') ? 'popup' : null; if (!f) return;
+    try { await api('/api/staff/deals', { method: 'PUT', body: { id: tr.dataset.deal, [f]: e.target.checked } }); toast(f === 'active' ? (e.target.checked ? 'Deal switched on' : 'Deal switched off') : (e.target.checked ? 'Pop-up on' : 'Pop-up off')); } catch (err) { fail(err); }
+    loadDeals(); loadCatalog();
+  });
+  $('#dealRows').addEventListener('click', async e => {
+    const tr = e.target.closest('[data-deal]'); if (!tr) return;
+    const d = dealsData.find(x => x.id === tr.dataset.deal);
+    if (e.target.closest('[data-deal-edit]')) { openDealForm(d); $('#dealForm').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (e.target.closest('[data-deal-del]')) {
+      if (!confirm(`Delete "${d.title}"? It stops right away. Past orders keep their discount.`)) return;
+      try { await api('/api/staff/deals', { method: 'DELETE', body: { id: d.id } }); toast('Deal deleted'); loadDeals(); loadCatalog(); } catch (err) { fail(err); }
+    }
   });
 
   // ===================================================================== NIGHTLY SUMMARY
@@ -1360,6 +1543,7 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
+    'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',
   };

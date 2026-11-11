@@ -394,12 +394,62 @@
         <div id="promoList"></div>
         <button class="btn" type="button" id="savePromos" style="margin-top:12px">Save promos</button>
       </div>
+      <div class="box deals-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>🎉 Buy 1 Take 1 deals</h3><button class="btn ghost" type="button" id="dealNew">+ New deal</button></div>
+        <p class="hint">Pick the drinks or food in the deal. When a customer (online) or the cashier (POS) has two of them, they're paired automatically: the pair costs the price you set, or the dearer one if you leave the price empty (the other is free). Add-ons are always paid. Promo codes and senior/PWD/staff discounts apply to what's left.</p>
+        <form class="deal-form" id="dealForm" hidden novalidate>
+          <h4 id="dealFormTitle">New deal</h4>
+          <div class="row2">
+            <div class="field"><label for="dfTitle">Deal name</label><input id="dfTitle" maxlength="60" placeholder="e.g. Buy 1 Take 1 Iced Coffee"></div>
+            <div class="field"><label for="dfPrice">Price for 2 (₱, optional)</label><input id="dfPrice" type="number" min="1" step="1" placeholder="Empty = 2nd one free"></div>
+          </div>
+          <div class="field"><label for="dfDesc">Description (shown to customers)</label><input id="dfDesc" maxlength="200" placeholder="e.g. Any 2 iced coffees, the second one's on us! Every Tuesday."></div>
+          <div class="field">
+            <label>Drinks / food in this deal <span class="hint" id="dfCount">(0 picked)</span></label>
+            <div class="deal-pick-bar"><input id="dfSearch" type="search" placeholder="Search menu…" aria-label="Search menu"><select id="dfCat" aria-label="Category"></select><button class="linkbtn" type="button" id="dfAll">Pick all shown</button><button class="linkbtn" type="button" id="dfNone">Clear</button></div>
+            <div class="deal-pick" id="dfItems"></div>
+          </div>
+          <div class="promo-row"><span class="lbl">Days</span><div class="chips" id="dfDays"></div><small class="hint">None picked = every day</small></div>
+          <div class="row3">
+            <div class="field"><label for="dfStart">Starts (optional)</label><input id="dfStart" type="date"></div>
+            <div class="field"><label for="dfEnd">Ends (optional)</label><input id="dfEnd" type="date"></div>
+            <div class="field"><label for="dfMax">Max pairs per order</label><input id="dfMax" type="number" min="1" step="1" placeholder="No limit"></div>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="dfChannel">Works</label><select id="dfChannel"><option value="both">Online &amp; in store</option><option value="online">Online only</option><option value="pos">In store (POS) only</option></select></div>
+            <label class="switchrow" for="dfPopup" style="align-self:end"><input type="checkbox" class="toggle" id="dfPopup" checked> 📣 Show as a pop-up on the website</label>
+          </div>
+          <div class="row-btns"><button class="btn" type="submit" id="dfSave">Save deal</button><button class="btn ghost" type="button" id="dfCancel">Cancel</button></div>
+        </form>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Deal</th><th>Items</th><th>Price</th><th>When</th><th class="num">Used</th><th>Active</th><th>Pop-up</th><th></th></tr></thead><tbody id="dealRows"></tbody></table></div>
+      </div>
       <div class="box codes-box" style="margin-top:16px">
         <div class="view-head" style="margin:0"><h3>Promo codes</h3></div>
         <p class="hint">Codes customers type in the cart, or cashiers enter at the POS (Discount → Promo code). The discount is on the items (not the delivery fee), rounded to whole pesos, one code per order. A cancelled order gives its use back.</p>
         <form class="code-form" id="codeForm" novalidate>
           <div class="field"><label for="cfCode">Code</label><div class="code-row"><input id="cfCode" maxlength="20" placeholder="BDAY20" autocomplete="off"><button class="btn ghost" type="button" id="cfGen" title="Make a random code">🎲</button></div></div>
-          <div class="field"><label for="cfKind">Discount</label><div class="code-row"><select id="cfKind"><option value="pct">% off</option><option value="fixed">₱ off</option></select><input id="cfValue" type="number" min="1" step="1" placeholder="20" aria-label="Amount"></div></div>
+          <div class="field"><label for="cfKind">Discount</label><div class="code-row"><select id="cfKind"><option value="pct">% off</option><option value="fixed">₱ off</option><option value="bogo">Buy this, get that</option></select><input id="cfValue" type="number" min="1" step="1" placeholder="20" aria-label="Amount"></div></div>
+          <div class="bogo-box" id="cfBogo" hidden>
+            <div class="bogo-col">
+              <h4>1. Customer buys</h4>
+              <div class="bogo-picker" id="bgBuy"></div>
+              <div class="row2">
+                <div class="field"><label for="bgBuyQty">How many</label><input id="bgBuyQty" type="number" min="1" max="10" step="1" value="1"></div>
+                <div class="field"><label for="bgBuyLabel">Name for customers (optional)</label><input id="bgBuyLabel" maxlength="60" placeholder="e.g. any iced coffee"></div>
+              </div>
+            </div>
+            <div class="bogo-col">
+              <h4>2. Customer gets</h4>
+              <div class="bogo-picker" id="bgGet"></div>
+              <div class="row3">
+                <div class="field"><label for="bgPct">Reward</label><select id="bgPct"><option value="100">Free</option><option value="50">50% off</option><option value="30">30% off</option><option value="20">20% off</option><option value="custom">Other %…</option></select></div>
+                <div class="field" id="bgPctOtherF" hidden><label for="bgPctOther">% off</label><input id="bgPctOther" type="number" min="1" max="100" step="1" placeholder="25"></div>
+                <div class="field"><label for="bgMax">Max per order</label><input id="bgMax" type="number" min="1" max="20" step="1" value="1" placeholder="No limit"></div>
+              </div>
+              <div class="field"><label for="bgGetLabel">Name for customers (optional)</label><input id="bgGetLabel" maxlength="60" placeholder="e.g. a cookie"></div>
+            </div>
+            <p class="hint bogo-preview" id="bgPreview"></p>
+          </div>
           <div class="field" id="cfMaxF"><label for="cfMax">Max discount (₱, optional)</label><input id="cfMax" type="number" min="1" step="1" placeholder="No limit"></div>
           <div class="field"><label for="cfMin">Minimum order (₱)</label><input id="cfMin" type="number" min="0" step="1" placeholder="0"></div>
           <div class="field"><label for="cfStart">Starts (optional)</label><input id="cfStart" type="date"></div>
@@ -407,9 +457,16 @@
           <div class="field"><label for="cfUses">Max uses (optional)</label><input id="cfUses" type="number" min="1" step="1" placeholder="Unlimited"></div>
           <div class="field"><label for="cfChannel">Works</label><select id="cfChannel"><option value="both">Online &amp; in store</option><option value="online">Online only</option><option value="pos">In store (POS) only</option></select></div>
           <div class="field grow"><label for="cfNote">Note for staff (optional)</label><input id="cfNote" maxlength="120" placeholder="e.g. Facebook giveaway"></div>
-          <button class="btn" type="submit">Create code</button>
+          <div class="popup-fields">
+            <label class="switchrow" for="cfPopup"><input type="checkbox" class="toggle" id="cfPopup"> 📣 Show as a pop-up on the website</label>
+            <div class="popup-more" id="cfPopupMore" hidden>
+              <div class="field"><label for="cfPopTitle">Pop-up headline (optional)</label><input id="cfPopTitle" maxlength="60" placeholder="e.g. Happy birthday, Demetria's fam! 🎂"></div>
+              <div class="field grow"><label for="cfPopText">Message (optional)</label><input id="cfPopText" maxlength="160" placeholder="e.g. Treat yourself to your favorite drink this week."></div>
+            </div>
+          </div>
+          <div class="row-btns code-form-btns"><button class="btn" type="submit" id="cfSubmit">Create code</button><button class="btn ghost" type="button" id="cfCancelEdit" hidden>Cancel editing</button></div>
         </form>
-        <div class="table-wrap"><table class="otable"><thead><tr><th>Code</th><th>Discount</th><th>Rules</th><th class="num">Used</th><th class="num">Given</th><th>Active</th><th></th></tr></thead><tbody id="codeRows"></tbody></table></div>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Code</th><th>Discount</th><th>Rules</th><th class="num">Used</th><th class="num">Given</th><th>Active</th><th>Website pop-up</th><th></th></tr></thead><tbody id="codeRows"></tbody></table></div>
       </div>
       <div class="box summary-box" style="margin-top:16px">
         <div class="view-head" style="margin:0"><h3>Nightly summary email</h3><label class="switchrow" for="sumToggle"><input type="checkbox" class="toggle" id="sumToggle"> Email me a summary every night</label></div>
@@ -457,7 +514,7 @@
           <option value="">Everything</option><option value="price">Price &amp; cost changes</option><option value="product">Products, add-ons, photos</option>
           <option value="order">Voids, refunds, cancels, discounts, payments</option><option value="cash">Shifts &amp; cash in/out</option>
           <option value="expense">Expenses</option><option value="stock">Stock</option><option value="settings">Settings, hours, promos</option>
-          <option value="users">Staff accounts</option><option value="codes">Promo codes</option><option value="login">Sign-ins</option></select></div>
+          <option value="users">Staff accounts</option><option value="codes">Promo codes &amp; deals</option><option value="login">Sign-ins</option></select></div>
         <div class="field"><label for="acUser">Who</label><select id="acUser"><option value="">Everyone</option></select></div>
         <div class="field"><label for="acFrom">From</label><input id="acFrom" type="date"></div>
         <div class="field"><label for="acTo">To</label><input id="acTo" type="date"></div>
