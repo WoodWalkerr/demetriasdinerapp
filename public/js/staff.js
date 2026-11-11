@@ -88,7 +88,6 @@
     $('#userRole').textContent = `${d.roles[d.user.role]?.label || d.user.role} · @${d.user.username}`;
     $$('.tabs a').forEach(a => { a.hidden = !!a.dataset.perm && !can(a.dataset.perm); });
     $$('[data-perm-box]').forEach(el => { el.hidden = !can(el.dataset.permBox); });
-    $$('[data-perm-opt]').forEach(o => { o.hidden = o.disabled = !can(o.dataset.permOpt); });
     updateShiftUi();
   }
   function updateShiftUi() {
@@ -158,7 +157,7 @@
     if (link?.hidden) tab = 'board';
     TABS.forEach(t => { $('#view-' + t).hidden = t !== tab; });
     $$('.tabs a').forEach(a => a.dataset.tab === tab ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); }, pos: renderPosMenu, activity: loadActivity }[tab] || (() => {}))();
+    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: renderSettings, pos: renderPosMenu, activity: loadActivity }[tab] || (() => {}))();
   }
   window.addEventListener('hashchange', route);
 
@@ -290,7 +289,7 @@
       root.innerHTML = `
         <fieldset class="pay-lines"><legend>Payment${lines.length > 1 ? ' · split' : ''}</legend>
           ${lines.map((l, i) => `<div class="pay-line">
-            <select data-pl-m="${i}" aria-label="Method">${['cash', 'gcash', 'paymaya'].map(m => `<option value="${m}" ${l.method === m ? 'selected' : ''}>${PAY[m]}</option>`).join('')}</select>
+            <select data-pl-m="${i}" aria-label="Method">${['cash', 'gcash', 'paymaya', 'card'].map(m => `<option value="${m}" ${l.method === m ? 'selected' : ''}>${PAY[m]}</option>`).join('')}</select>
             <input data-pl-c="${i}" type="number" inputmode="decimal" step="0.01" min="0" value="${l.cents == null ? '' : (l.cents / 100).toFixed(2).replace(/\.00$/, '')}" ${lines.length === 1 ? 'readonly' : ''} aria-label="Amount">
             ${l.method !== 'cash' ? `<input data-pl-r="${i}" maxlength="60" value="${esc(l.ref || '')}" placeholder="Ref no." aria-label="Reference number">` : '<span></span>'}
             ${lines.length > 1 ? `<button type="button" class="x sm" data-pl-x="${i}" aria-label="Remove">×</button>` : ''}
@@ -478,21 +477,10 @@
   const posPromo = (p) => promoFor(p, catalog.promos, new Date(), catalog.tz);
   const posUnit = (l) => { const p = prodById()[l.id]; const A = addonById(); return (p?.price || 0) - (posPromo(p)?.off || 0) + (l.addons || []).reduce((a, id) => a + (A[id]?.price || 0), 0); };
   const DISC = { senior: 20, pwd: 20, staff: 10 }, DISC_LABEL = { senior: 'Senior citizen 20%', pwd: 'PWD 20%', staff: 'Staff 10%' };
-  let posCode = null; // promo code checked at the POS
-  // Same rules as the server (lib/promocodes.js, lib/staff/pos.js).
-  const codeOff = (c, sub) => { if (!c || sub < (c.minCents || 0)) return 0; let off = Math.round((c.kind === 'pct' ? (sub * c.value) / 100 : c.value) / 100) * 100; if (c.kind === 'pct' && c.maxOffCents) off = Math.min(off, c.maxOffCents); return Math.max(0, Math.min(off, sub)); };
   const posTotals = () => {
     const sub = ticketLines.reduce((a, l) => a + posUnit(l) * l.qty, 0);
-    const d = $('#posDisc').value;
-    let disc = 0, label = DISC_LABEL[d] || '';
-    if (DISC[d]) disc = Math.round(sub * DISC[d] / 100);
-    else if (d === 'code') { disc = codeOff(posCode, sub); label = posCode ? `Promo ${posCode.code}` : 'Promo code'; }
-    else if (d === 'custom') {
-      const v = parseFloat($('#posCustVal').value) || 0, pctK = $('#posCustKind').value === 'pct';
-      disc = pctK ? (Number.isInteger(v) && v >= 1 && v <= 100 ? Math.round((sub * v) / 100) : 0) : Math.min(Math.round(v * 100), sub);
-      label = `Discount ${pctK ? v + '%' : money(Math.round(v * 100))}`;
-    }
-    return { sub, disc, total: sub - disc, label };
+    const d = $('#posDisc').value, disc = d ? Math.round(sub * DISC[d] / 100) : 0;
+    return { sub, disc, total: sub - disc };
   };
   function renderPosMenu() {
     const cats = ['all', ...Object.keys(CAT)];
@@ -543,36 +531,22 @@
       : '<div class="empty">Tap items on the left to start a sale.</div>';
     const t = posTotals(), d = $('#posDisc').value;
     $('#posDiscIdF').hidden = !(d === 'senior' || d === 'pwd');
-    $('#posCodeF').hidden = d !== 'code'; $('#posCustomF').hidden = d !== 'custom';
-    $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.sub)}</dd>${t.disc ? `<dt>${esc(t.label)}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
+    $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.sub)}</dd>${t.disc ? `<dt>${DISC_LABEL[d]}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
     posPay.redraw();
   }
   function updateCharge() {
     if (!me) return;
     const t = posTotals(), v = posPay.value(), d = $('#posDisc').value;
     const needId = (d === 'senior' || d === 'pwd') && !$('#posDiscId').value.trim();
-    const discWhy = d === 'code' ? (!posCode ? 'Type the promo code and tap Check.' : t.sub < posCode.minCents ? `${posCode.code} needs a minimum order of ${money(posCode.minCents)}.` : '')
-      : d === 'custom' ? (!t.disc ? 'Enter the discount amount.' : $('#posCustWhy').value.trim().length < 3 ? 'Write the reason for the discount.' : '') : '';
     const btn = $('#posCharge');
-    btn.disabled = !ticketLines.length || posBusy || !me.shift || needId || !!discWhy || !!v.error;
+    btn.disabled = !ticketLines.length || posBusy || !me.shift || needId || !!v.error;
     btn.textContent = posBusy ? 'Saving…' : ticketLines.length ? `Charge ${money(t.total)} · ${PAY[v.method]}` : 'Charge';
-    $('#posNote').textContent = !me.shift ? 'Open your shift to take payments.' : needId ? 'Enter the ID number for this discount.' : ticketLines.length && discWhy ? discWhy : ticketLines.length && v.error ? v.error : '';
+    $('#posNote').textContent = !me.shift ? 'Open your shift to take payments.' : needId ? 'Enter the ID number for this discount.' : ticketLines.length && v.error ? v.error : '';
   }
   $('#posLines').addEventListener('click', e => { const b = e.target.closest('[data-tq]'); if (!b) return; const l = ticketLines[+b.dataset.tq]; l.qty += +b.dataset.d; if (l.qty <= 0) ticketLines.splice(+b.dataset.tq, 1); renderTicket(); });
   $('#posDisc').addEventListener('change', renderTicket);
-  ['#posCustKind', '#posCustVal'].forEach(id => $(id).addEventListener('input', renderTicket));
-  $('#posCustWhy').addEventListener('input', updateCharge);
-  $('#posCode').addEventListener('input', () => { if (posCode) { posCode = null; renderTicket(); } });
-  const checkPosCode = async () => {
-    const c = $('#posCode').value.trim(); if (!c) return $('#posCode').focus();
-    try { posCode = await api('/api/staff/codes?check=' + encodeURIComponent(c)); $('#posCode').value = posCode.code; toast(`${posCode.code}: ${posCode.label}`); }
-    catch (err) { posCode = null; fail(err); }
-    renderTicket();
-  };
-  $('#posCodeCheck').onclick = checkPosCode;
-  $('#posCode').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkPosCode(); } });
   $('#posDiscId').addEventListener('input', updateCharge);
-  const resetTicket = () => { ticketLines = []; posCode = null; $('#posForm').reset(); $('#posBoard').checked = true; posPay.reset(); renderTicket(); };
+  const resetTicket = () => { ticketLines = []; $('#posForm').reset(); $('#posBoard').checked = true; posPay.reset(); renderTicket(); };
   $('#posClear').onclick = resetTicket;
   $('#posForm').addEventListener('submit', async e => {
     e.preventDefault(); if (posBusy || !ticketLines.length) return;
@@ -583,7 +557,6 @@
         items: ticketLines.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons })),
         name: $('#posName').value, orderType: $('#posType').value, payments: v.payments, tenderedCents: v.tenderedCents,
         discount: $('#posDisc').value || undefined, discountId: $('#posDiscId').value, sendToBoard: $('#posBoard').checked,
-        promoCode: posCode?.code, customKind: $('#posCustKind').value, customValue: $('#posCustVal').value, discountReason: $('#posCustWhy').value,
       } });
       cache.set(o.id, o); posBusy = false; resetTicket(); showReceipt(o); refreshBoard(); loadCatalog();
     } catch (err) { posBusy = false; updateCharge(); fail(err); $('#posNote').textContent = err.message; if (err.status === 409) { refreshMe(); loadCatalog(); } }
@@ -648,7 +621,7 @@
     const s = cur.sales;
     $('#shiftTiles').innerHTML = [[money(s.grossCents), 'Gross'], [money(s.discountCents), 'Discounts'], [money(s.netCents), 'Net sales'], [s.orders, 'Orders'], [money(cur.cashInCents), 'Cash in (pay in)'], [money(cur.cashOutCents), 'Cash out (pay out)'], [money(cur.expectedCashCents), 'Expected cash in drawer']]
       .map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
-    $('#shiftMethods').innerHTML = [['Opening cash', cur.openingCents], ['Cash sales', s.byMethod.cash], ['GCash', s.byMethod.gcash], ['Maya', s.byMethod.paymaya], ...(s.byMethod.card ? [['Card', s.byMethod.card]] : []), ['GCash/Maya QR (online)', s.byMethod.qrph], ['Delivery fees', s.deliveryCents], ['Voided / refunded', s.voids.cents]]
+    $('#shiftMethods').innerHTML = [['Opening cash', cur.openingCents], ['Cash sales', s.byMethod.cash], ['GCash', s.byMethod.gcash], ['Maya', s.byMethod.paymaya], ['Card', s.byMethod.card], ['GCash/Maya QR (online)', s.byMethod.qrph], ['Delivery fees', s.deliveryCents], ['Voided / refunded', s.voids.cents]]
       .map(([k, v]) => `<dt>${k}</dt><dd>${money(v)}</dd>`).join('') + `<dt>Opened</dt><dd>${fmtDT(cur.openedAt)}</dd>`;
     $('#cCat').innerHTML = (shiftData.cashCategories[$('input[name=ckind]:checked').value] || []).map(c => `<option>${esc(c)}</option>`).join('');
     $('#moves').innerHTML = cur.moves.length ? cur.moves.slice().reverse().map(m => `<div class="move ${m.kind}"><b>${m.kind === 'in' ? '+' : '−'}${money(m.cents)}</b><span>${esc(m.category)}${m.note ? ' · ' + esc(m.note) : ''}</span><small>${fmtTime(m.at)} · ${esc(m.staffName || '')}</small></div>`).join('') : '<p class="hint">No cash in or out yet.</p>';
@@ -695,7 +668,7 @@
     $('#shiftReport').innerHTML = `<h3>Shift report</h3>
       <p class="c">Demetria's Diner<br>${esc(s.staffName)}<br>${fmtDT(s.openedAt)} → ${s.closedAt ? fmtDT(s.closedAt) : 'still open'}${s.closedBy && s.closedBy !== s.staffName ? `<br>Closed by ${esc(s.closedBy)}` : ''}</p><hr>
       ${row('Orders', st.orders)}${row('Items sold', st.items)}${row('Gross sales', money(st.grossCents))}${row('Discounts', '−' + money(st.discountCents))}${row('Net sales', money(st.netCents), 'tot')}
-      <hr>${row('Cash', money(st.byMethod.cash))}${row('GCash', money(st.byMethod.gcash))}${row('Maya', money(st.byMethod.paymaya))}${st.byMethod.card ? row('Card', money(st.byMethod.card)) : ''}${row('GCash/Maya QR', money(st.byMethod.qrph))}
+      <hr>${row('Cash', money(st.byMethod.cash))}${row('GCash', money(st.byMethod.gcash))}${row('Maya', money(st.byMethod.paymaya))}${row('Card', money(st.byMethod.card))}${row('GCash/Maya QR', money(st.byMethod.qrph))}
       ${row('Voided / refunded', `${st.voids.n} · ${money(st.voids.cents)}`)}
       <hr>${row('Opening cash', money(s.openingCents))}${row('+ Cash sales', money(st.byMethod.cash))}${row('+ Cash in (pay in)', money(s.cashInCents))}${row('− Cash out (pay out)', money(s.cashOutCents))}${row('Expected cash', money(s.expectedCashCents), 'tot')}
       ${s.countedCents != null ? row('Counted cash', money(s.countedCents)) + row(s.overShortCents < 0 ? 'SHORT' : s.overShortCents > 0 ? 'OVER' : 'Balanced', money(Math.abs(s.overShortCents)), 'tot') : ''}
@@ -1188,42 +1161,6 @@
   $('#addPromo').onclick = () => { promoDraft.push({ name: 'Happy hour', pct: 10, cats: [], icedOnly: true, days: [0, 1, 2, 3, 4, 5, 6], from: '14:00', to: '16:00', active: true }); renderPromos(); };
   $('#savePromos').onclick = async () => { if (await saveSettings({ promos: promoDraft }, 'Promos saved. Prices update on the website and POS.')) { promoDraft = null; renderPromos(); loadCatalog(); } };
 
-  // ===================================================================== PROMO CODES
-  let codesData = null;
-  const CHANNEL = { both: 'Online & in store', online: 'Online only', pos: 'In store only' };
-  async function loadCodes() { if (!can('settings')) return; try { codesData = await api('/api/staff/codes'); renderCodes(); } catch (e) { fail(e); } }
-  function renderCodes() {
-    const today = cafeDate(new Date(), 4);
-    $('#codeRows').innerHTML = (codesData?.codes || []).map(c => {
-      const ended = c.endsOn && c.endsOn < today, used = c.maxUses != null && c.uses >= c.maxUses;
-      const rules = [c.minCents ? `Min ${money(c.minCents)}` : '', c.startsOn || c.endsOn ? `${c.startsOn || '…'} → ${c.endsOn || '…'}` : '', CHANNEL[c.channel]].filter(Boolean).join(' · ');
-      return `<tr data-code="${esc(c.code)}" class="${!c.active || ended || used ? 'muted-row' : ''}">
-        <td><b class="mono">${esc(c.code)}</b>${c.note ? `<br><small class="hint">${esc(c.note)}</small>` : ''}</td>
-        <td>${esc(c.label)}</td><td><small>${esc(rules)}</small>${ended ? '<br><small class="bad">Ended</small>' : used ? '<br><small class="bad">Used up</small>' : ''}</td>
-        <td class="num">${c.uses}${c.maxUses != null ? ` / ${c.maxUses}` : ''}</td><td class="num">${money(c.givenCents)}</td>
-        <td><label class="switchrow sm"><input type="checkbox" class="toggle" data-code-active ${c.active ? 'checked' : ''}> ${c.active ? 'On' : 'Off'}</label></td>
-        <td><button type="button" class="linkbtn bad" data-code-del>Delete</button></td></tr>`;
-    }).join('') || '<tr><td colspan="7" class="hint">No promo codes yet. Create one above.</td></tr>';
-  }
-  $('#cfKind').onchange = () => { $('#cfMaxF').hidden = $('#cfKind').value !== 'pct'; $('#cfValue').placeholder = $('#cfKind').value === 'pct' ? '20' : '50'; };
-  $('#cfGen').onclick = () => { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; $('#cfCode').value = 'DD' + Array.from(crypto.getRandomValues(new Uint8Array(5)), b => A[b % A.length]).join(''); };
-  $('#codeForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    const body = { code: $('#cfCode').value, kind: $('#cfKind').value, value: $('#cfValue').value, maxOff: $('#cfKind').value === 'pct' ? $('#cfMax').value : '',
-      minOrder: $('#cfMin').value, startsOn: $('#cfStart').value, endsOn: $('#cfEnd').value, maxUses: $('#cfUses').value, channel: $('#cfChannel').value, note: $('#cfNote').value };
-    try { const c = await api('/api/staff/codes', { method: 'POST', body }); toast(`Code ${c.code} created: ${c.label}`); $('#codeForm').reset(); $('#cfKind').onchange(); loadCodes(); } catch (err) { fail(err); }
-  });
-  $('#codeRows').addEventListener('change', async e => {
-    const tr = e.target.closest('[data-code]'); if (!tr || !e.target.matches('[data-code-active]')) return;
-    try { await api('/api/staff/codes', { method: 'PUT', body: { code: tr.dataset.code, active: e.target.checked } }); toast(e.target.checked ? 'Code switched on' : 'Code switched off'); } catch (err) { fail(err); }
-    loadCodes();
-  });
-  $('#codeRows').addEventListener('click', async e => {
-    const tr = e.target.closest('[data-code]'); if (!tr || !e.target.closest('[data-code-del]')) return;
-    if (!confirm(`Delete code ${tr.dataset.code}? Customers won't be able to use it. Past orders keep their discount.`)) return;
-    try { await api('/api/staff/codes', { method: 'DELETE', body: { code: tr.dataset.code } }); toast('Code deleted'); loadCodes(); } catch (err) { fail(err); }
-  });
-
   // ===================================================================== NIGHTLY SUMMARY
   function renderSummaryBox() {
     const S = settings.summary || {}, I = settings.integration || {};
@@ -1252,13 +1189,12 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
-    'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',
   };
-  const WARN = new Set(['order.void', 'order.refund', 'expense.delete', 'product.delete', 'login.failed', 'payment.reject', 'user.delete', 'code.delete']);
+  const WARN = new Set(['order.void', 'order.refund', 'expense.delete', 'product.delete', 'login.failed', 'payment.reject', 'user.delete']);
   const MONEY_KEYS = new Set(['price', 'cost', 'cents', 'totalCents', 'openingCents', 'countedCents', 'expectedCents', 'overShortCents']);
-  const LABEL = { label: 'Discount', channel: 'Works', maxUses: 'Max uses', startsOn: 'Starts', endsOn: 'Ends', price: 'Price', cost: 'Cost', name: 'Name', cat: 'Category', hot: 'Hot', available: 'Available', low: 'Low-stock alert', grp: 'Applies to', active: 'Active', role: 'Role', username: 'Username', perms: 'Permissions', password: 'Password' };
-  const val = (k, v) => (v == null || v === '' ? '—' : MONEY_KEYS.has(k) ? money(v) : k === 'cat' ? CAT[v] || v : k === 'channel' ? CHANNEL[v] || v : typeof v === 'boolean' ? (v ? 'yes' : 'no') : Array.isArray(v) ? v.join(', ') : esc(String(v)));
+  const LABEL = { price: 'Price', cost: 'Cost', name: 'Name', cat: 'Category', hot: 'Hot', available: 'Available', low: 'Low-stock alert', grp: 'Applies to', active: 'Active', role: 'Role', username: 'Username', perms: 'Permissions', password: 'Password' };
+  const val = (k, v) => (v == null || v === '' ? '—' : MONEY_KEYS.has(k) ? money(v) : k === 'cat' ? CAT[v] || v : typeof v === 'boolean' ? (v ? 'yes' : 'no') : Array.isArray(v) ? v.join(', ') : esc(String(v)));
   function acDetail(e) {
     const d = e.detail || {};
     if (e.action.startsWith('settings.')) {

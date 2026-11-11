@@ -40,9 +40,9 @@ export default route(['GET'], async (req, res) => {
   const st = openState(s.hours, now);
   res.status(200).json({
     v: v?.value || '1', build: BUILD, currency: CURRENCY, categories: CATEGORIES,
-    accepting: s.accepting && ((online && !qr) || s.payCounter || qr),
+    accepting: s.accepting && (online || s.payCounter || qr),
     // With your own QR switched on, GCash/Maya go to your QR instead of PayMongo; cards still use PayMongo.
-    payments: { qrph: qr, gcash: online && !qr, paymaya: online && !qr, counter: s.payCounter },
+    payments: { qrph: qr, gcash: online && !qr, paymaya: online && !qr, card: online, counter: s.payCounter },
     delivery: deliveryReady(s)
       ? { enabled: true, lat: d.lat, lng: d.lng, maxKm: d.maxKm, tiers: d.tiers, minOrder: d.minOrder || 0, eta: d.eta }
       : { enabled: false },
