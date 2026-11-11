@@ -354,12 +354,12 @@
     const d = e.target.closest('[data-open]'); if (d) return openDetail(d.dataset.open);
   });
 
-  async function setStatus(id, status) {
+  async function setStatus(id, status, reason) {
     const o = cache.get(id);
     if (o && needsPay(o, status)) return openPay(o);
     busy.add(id); renderBoard(); renderDetail();
     try {
-      const x = await api('/api/staff/orders', { method: 'PATCH', body: { id, status } });
+      const x = await api('/api/staff/orders', { method: 'PATCH', body: { id, status, reason } });
       cache.set(x.id, x);
       if (status === 'cancelled') toast(x.paymentStatus === 'refunded' ? `#${x.code} cancelled and ${money(x.totalCents)} refunded` : x.paymentStatus === 'voided' ? `#${x.code} cancelled. Give back ${money(x.totalCents)}${x.paymentMethod === 'qrph' ? ' by GCash' : ''}.` : `#${x.code} cancelled`);
     } catch (err) { fail(err); }
@@ -510,7 +510,8 @@
     }
     if (nx && onBoard) acts.push(`<button class="btn" type="button" data-act="st:${nx[0]}" ${b ? 'disabled' : ''}>${needsPay(o, nx[0]) ? `${nx[1]} · collect payment` : nx[1]}</button>`);
     if (online && ['pending', 'expired', 'failed'].includes(o.paymentStatus)) acts.push(`<button class="btn ghost" type="button" data-act="pay:check" ${b ? 'disabled' : ''}>Check payment with PayMongo</button>`);
-    if (['new', 'making', 'ready', 'delivering'].includes(o.status) && (o.paymentStatus !== 'paid' || can('void'))) {
+    const finishedVoid = o.status === 'done' && o.paymentStatus === 'paid' && can('void'); // void / refund after the sale
+    if (finishedVoid || (['new', 'making', 'ready', 'delivering'].includes(o.status) && (o.paymentStatus !== 'paid' || can('void')))) {
       const refundable = online && o.paymentStatus === 'paid';
       const back = o.paymentStatus === 'paid' && !refundable;
       const label = armed === o.id ? (refundable ? `Confirm: cancel & refund ${money(o.totalCents)}` : back ? `Confirm: cancel, return ${money(o.totalCents)}` : 'Confirm cancel')
@@ -526,7 +527,16 @@
     else if (kind === 'pay') payAction(detailId, arg);
     else if (kind === 'cancel') {
       if (armed !== detailId) { armed = detailId; renderDetail(); setTimeout(() => { if (armed === detailId) { armed = null; renderDetail(); } }, 5000); }
-      else { armed = null; setStatus(detailId, 'cancelled'); }
+      else {
+        armed = null;
+        const o = cache.get(detailId);
+        if (o?.status === 'done') {
+          const why = prompt(`Why are you voiding #${o.code} (${money(o.totalCents)})?\nFor example: rung up twice, wrong item, customer returned it.`);
+          if (!why || why.trim().length < 3) { toast('Not voided: a reason is needed.'); return renderDetail(); }
+          return setStatus(detailId, 'cancelled', why.trim());
+        }
+        setStatus(detailId, 'cancelled');
+      }
     }
   });
 
@@ -580,6 +590,7 @@
   const posUnit = (l) => { const p = prodById()[l.id]; const A = addonById(); return (p?.price || 0) - (posPromo(p)?.off || 0) + (l.addons || []).reduce((a, id) => a + (A[id]?.price || 0), 0); };
   const DISC = { senior: 20, pwd: 20, staff: 10 }, DISC_LABEL = { senior: 'Senior citizen 20%', pwd: 'PWD 20%', staff: 'Staff 10%' };
   let posCode = null; // promo code checked at the POS
+  let posStamp = { card: null, redeem: false }; // stamp card looked up at the POS
   let posCodes = null, posCodesAt = 0; // saved codes listed under the code box
   // Same rules as the server (lib/promocodes.js, lib/staff/pos.js).
   // "Buy this, get that" codes: same rules as the server (lib/promocodes.js → bogoReward).
@@ -592,13 +603,44 @@
     return { offCents: getU.slice(0, best).reduce((a, u) => a + Math.round((u.base * Math.min(100, b.getPct)) / 10000) * 100, 0), rewards: best, need: best ? '' : buyU.length < per ? 'buy' : 'get' };
   }
   const bogoNeedText = (c, need) => need === 'buy' ? `${c.code}: buy ${c.bogo.buyQty > 1 ? c.bogo.buyQty + ' × ' : ''}${c.bogo.buyLabel} first.` : `${c.code}: add ${c.bogo.getLabel} (${c.bogo.getPct >= 100 ? 'free' : c.bogo.getPct + '% off'}).`;
+  // Stamp card: same rules as the server (lib/loyalty.js).
+  const loyQualifies = (cfg, l) => (cfg.ids?.length || cfg.cats?.length ? cfg.ids.includes(l.id) || cfg.cats.includes(l.cat) : kindOf(l.cat) === 'drink');
+  const loyEarn = (cfg, lines, reward = 0) => Math.max(0, lines.filter(l => loyQualifies(cfg, l)).reduce((a, l) => a + l.qty, 0) - reward);
+  function loyReward(cfg, lines, used) {
+    let best = null;
+    lines.forEach((l, i) => { if (!loyQualifies(cfg, l) || l.qty - (used?.get(i) || 0) <= 0) return; const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); if (!best || base > best.base) best = { i, base }; });
+    return best ? { offCents: cfg.maxCents ? Math.min(best.base, cfg.maxCents) : best.base, line: best.i } : { offCents: 0, line: -1 };
+  }
+  const stampDots = (n, need) => Array.from({ length: need }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+  // "Add something?" suggestions: same order as the website (lib/upsell.js): your rules, bought together, then a popular pastry / drink.
+  function suggestFor(lines, up, max = 3) {
+    if (!up?.enabled || !lines.length) return [];
+    const P = prodById(), inCart = new Set(lines.map(l => l.id)), out = [];
+    const push = (id, why) => { const p = P[id]; if (p && p.price != null && !p.soldOut && !inCart.has(id) && !out.some(o => o.id === id)) out.push({ id, why }); };
+    for (const r of up.rules || []) if (lines.some(l => r.whenIds.includes(l.id) || r.whenCats.includes(P[l.id]?.cat))) r.suggestIds.forEach(id => push(id, r.text));
+    if (up.auto) lines.forEach(l => (up.pairs?.[l.id] || []).forEach(id => push(id, 'Often ordered together')));
+    const kinds = new Set(lines.map(l => kindOf(P[l.id]?.cat))), order = [...(up.popular || []), ...catalog.products.map(p => p.id)];
+    if (kinds.has('drink') && !kinds.has('food')) order.filter(id => P[id]?.cat === 'pastries').forEach(id => push(id, 'Great with a drink'));
+    if (kinds.has('food') && !kinds.has('drink')) order.filter(id => kindOf(P[id]?.cat) === 'drink').forEach(id => push(id, 'Something to drink?'));
+    return out.slice(0, max);
+  }
   const codeOff = (c, sub, lines = [], used = null) => { if (!c || sub < (c.minCents || 0)) return 0; if (c.kind === 'bogo') return Math.min(bogoReward(c.bogo, lines, used).offCents, sub); let off = Math.round((c.kind === 'pct' ? (sub * c.value) / 100 : c.value) / 100) * 100; if (c.kind === 'pct' && c.maxOffCents) off = Math.min(off, c.maxOffCents); return Math.max(0, Math.min(off, sub)); };
   const posTotals = () => {
     const gross = ticketLines.reduce((a, l) => a + posUnit(l) * l.qty, 0);
     const A = addonById();
-    const pl = ticketLines.map(l => ({ id: l.id, qty: l.qty, unitCents: posUnit(l), addons: (l.addons || []).map(id => ({ cents: A[id]?.price || 0 })) }));
+    const P0 = prodById();
+    const pl = ticketLines.map(l => ({ id: l.id, cat: P0[l.id]?.cat, name: P0[l.id]?.name, qty: l.qty, unitCents: posUnit(l), addons: (l.addons || []).map(id => ({ cents: A[id]?.price || 0 })) }));
     const deal = applyDeals(pl, (catalog.deals || []).filter(x => dealOn(x)));
-    const sub = gross - deal.offCents; // other discounts are on the price after the deal
+    const cfgL = catalog.loyalty || {};
+    let loy = { off: 0, earn: 0, label: '' };
+    if (cfgL.enabled && posStamp.card) {
+      if (posStamp.redeem && posStamp.card.ready) {
+        const r = loyReward(cfgL, pl, deal.used);
+        if (r.offCents) { deal.used.set(r.line, (deal.used.get(r.line) || 0) + 1); loy = { off: r.offCents, earn: loyEarn(cfgL, pl, 1), label: `🎟️ Free ${pl[r.line].name}` }; }
+      } else loy.earn = loyEarn(cfgL, pl);
+      if (posStamp.card.todayLeft != null) loy.earn = Math.min(loy.earn, posStamp.card.todayLeft); // max stamps per day
+    }
+    const sub = gross - deal.offCents - loy.off; // other discounts are on the price after the deal and the stamp card
     const d = $('#posDisc').value;
     let disc = 0, label = DISC_LABEL[d] || '';
     if (DISC[d]) disc = Math.round(sub * DISC[d] / 100);
@@ -609,7 +651,7 @@
       label = `Discount ${pctK ? v + '%' : money(Math.round(v * 100))}`;
     }
     const need = posCode?.kind === 'bogo' && !disc ? bogoReward(posCode.bogo, pl, deal.used).need : '';
-    return { gross, deal, sub, disc, total: sub - disc, label, need };
+    return { gross, deal, loy, pl, sub, disc, total: sub - disc, label, need };
   };
   function renderPosMenu() {
     const cats = ['all', ...Object.keys(CAT)];
@@ -648,6 +690,38 @@
     $('#posDlg').close(); renderTicket();
   };
   const posPay = payPanel($('#posPay'), () => posTotals().total, () => updateCharge());
+  // ---- POS: stamp card and "suggest" hints
+  function renderPosExtras(t) {
+    const cfgL = catalog.loyalty || {};
+    $('#posStampsF').hidden = !cfgL.enabled;
+    const c = posStamp.card;
+    $('#posStampInfo').hidden = !c;
+    if (c) $('#posStampInfo').innerHTML = `<div class="stamps">${stampDots(Math.min(c.stamps, cfgL.needed), cfgL.needed)}</div>
+      <span><b>${esc(c.name || 'Customer')}</b> · ${c.stamps} of ${cfgL.needed} stamps${c.pending ? ` (+${c.pending} waiting)` : ''}${t.loy.earn ? ` · <b>+${t.loy.earn}</b> with this sale` : c.todayLeft === 0 ? " · today's stamp already given" : ''}</span>
+      ${c.ready ? `<label class="switchrow sm"><input type="checkbox" class="toggle" id="posStampUse" ${posStamp.redeem ? 'checked' : ''}> 🎉 Use free item${t.loy.off ? ` (−${money(t.loy.off)})` : ''}</label>` : ''}`;
+    const sug = suggestFor(ticketLines, catalog.upsell, 3), P = prodById();
+    $('#posSuggest').hidden = !sug.length;
+    $('#posSuggest').innerHTML = sug.length ? `<span>💡 Suggest:</span>${sug.map(x => `<button type="button" data-sug="${esc(x.id)}" title="${esc(x.why || '')}">+ ${esc(P[x.id].name)} <small>${money(P[x.id].price)}</small></button>`).join('')}` : '';
+  }
+  const lookupStamp = async () => {
+    const v = $('#posStampPhone').value.trim(); if (!v) { posStamp = { card: null, redeem: false }; return renderTicket(); }
+    try { posStamp = { card: await api('/api/staff/loyalty?phone=' + encodeURIComponent(v)), redeem: false }; $('#posStampPhone').value = posStamp.card.phone; }
+    catch (err) { posStamp = { card: null, redeem: false }; fail(err); }
+    renderTicket();
+  };
+  $('#posStampCheck').onclick = lookupStamp;
+  $('#posStampPhone').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); lookupStamp(); } });
+  $('#posStampPhone').addEventListener('input', () => { if (posStamp.card) { posStamp = { card: null, redeem: false }; renderTicket(); } });
+  $('#posStampInfo').addEventListener('change', e => { if (e.target.id === 'posStampUse') { posStamp.redeem = e.target.checked; renderTicket(); } });
+  $('#posSuggest').addEventListener('click', e => {
+    const b = e.target.closest('[data-sug]'); if (!b) return;
+    const p = prodById()[b.dataset.sug]; if (!p) return;
+    const drink = kindOf(p.cat) === 'drink', opts = drink ? { sweet: 75, ice: p.hot ? null : 'Regular ice' } : null;
+    const key = p.id + '|' + JSON.stringify(opts) + '||up';
+    const ex = ticketLines.find(l => l.key === key);
+    if (ex) ex.qty++; else ticketLines.push({ key, id: p.id, qty: 1, opts, addons: [], upsell: true });
+    toast(`${p.name} added${drink ? ' (75% sweet, regular ice: tap it to change)' : ''}`); renderTicket();
+  });
   function renderTicket() {
     if (!me) return;
     ls.set('dd-pos-ticket', ticketLines);
@@ -662,7 +736,8 @@
     $('#posDiscIdF').hidden = !(d === 'senior' || d === 'pwd');
     $('#posCodeF').hidden = d !== 'code'; $('#posCustomF').hidden = d !== 'custom';
     renderPosCodes();
-    $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.gross)}</dd>${t.deal.applied.map(a => `<dt>🎉 ${esc(a.title)}${a.pairs > 1 ? ` ×${a.pairs}` : ''}</dt><dd>−${money(a.offCents)}</dd>`).join('')}${t.deal.waiting.length ? `<dt class="deal-hint" style="grid-column:1/-1">Add 1 more for ${esc(t.deal.waiting[0].title)}</dt>` : ''}${t.disc ? `<dt>${esc(t.label)}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
+    $('#posSum').innerHTML = `<dt>Subtotal</dt><dd>${money(t.gross)}</dd>${t.deal.applied.map(a => `<dt>🎉 ${esc(a.title)}${a.pairs > 1 ? ` ×${a.pairs}` : ''}</dt><dd>−${money(a.offCents)}</dd>`).join('')}${t.deal.waiting.length ? `<dt class="deal-hint" style="grid-column:1/-1">Add 1 more for ${esc(t.deal.waiting[0].title)}</dt>` : ''}${t.loy.off ? `<dt>${esc(t.loy.label)}</dt><dd>−${money(t.loy.off)}</dd>` : ''}${t.disc ? `<dt>${esc(t.label)}</dt><dd>−${money(t.disc)}</dd>` : ''}<dt style="align-self:end">Total</dt><dd class="big">${money(t.total)}</dd>`;
+    renderPosExtras(t);
     posPay.redraw();
   }
   function updateCharge() {
@@ -714,7 +789,7 @@
   setInterval(() => { if (!$('#view-pos').hidden && $('#posDisc').value === 'code') loadPosCodes(true); }, 60000);
   $('#posCode').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkPosCode(); } });
   $('#posDiscId').addEventListener('input', updateCharge);
-  const resetTicket = () => { ticketLines = []; posCode = null; $('#posForm').reset(); $('#posBoard').checked = true; posPay.reset(); renderTicket(); };
+  const resetTicket = () => { ticketLines = []; posCode = null; posStamp = { card: null, redeem: false }; $('#posStampInfo').hidden = true; $('#posForm').reset(); $('#posBoard').checked = true; posPay.reset(); renderTicket(); };
   $('#posClear').onclick = resetTicket;
   $('#posForm').addEventListener('submit', async e => {
     e.preventDefault(); if (posBusy || !ticketLines.length) return;
@@ -722,7 +797,8 @@
     posBusy = true; updateCharge();
     try {
       const o = await api('/api/staff/pos', { method: 'POST', body: {
-        items: ticketLines.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons })),
+        items: ticketLines.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons, ...(l.upsell ? { upsell: true } : {}) })),
+        loyaltyPhone: posStamp.card ? posStamp.card.phone : undefined, loyaltyRedeem: !!(posStamp.redeem && posStamp.card?.ready),
         name: $('#posName').value, orderType: $('#posType').value, payments: v.payments, tenderedCents: v.tenderedCents,
         discount: $('#posDisc').value || undefined, discountId: $('#posDiscId').value, sendToBoard: $('#posBoard').checked,
         promoCode: posCode?.code, customKind: $('#posCustKind').value, customValue: $('#posCustVal').value, discountReason: $('#posCustWhy').value,
@@ -959,7 +1035,14 @@
     if (g === 'weekly') return (long ? 'Week of ' : '') + d.toLocaleDateString([], { month: 'short', day: 'numeric' });
     return d.toLocaleDateString([], long ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' });
   };
-  async function loadDashboard() { try { dash = await api('/api/staff/dashboard'); renderDashboard(); seeAchievements(dash.achievements, true); } catch (e) { fail(e); } }
+  async function loadDashboard() { try { dash = await api('/api/staff/dashboard'); renderDashboard(); seeAchievements(dash.achievements, true); } catch (e) { fail(e); } loadRegulars(); }
+  async function loadRegulars() {
+    let d; try { d = await api('/api/staff/loyalty'); } catch { return; }
+    $('#regularsBox').hidden = !d.config.enabled && !d.regulars.length;
+    $('#regCount').textContent = d.regulars.length ? `${d.regulars.length} card${d.regulars.length === 1 ? '' : 's'}` : '';
+    $('#regRows').innerHTML = d.regulars.slice(0, 30).map(r => `<tr><td>${esc(r.name || '—')}</td><td class="mono">${esc(r.phone)}</td><td class="num"><b>${r.stamps}</b>${r.stamps >= d.config.needed ? ' 🎉' : ''}</td><td class="num">${r.visits}</td><td class="num">${r.rewards}</td><td class="num">${money(r.spentCents)}</td><td class="when">${r.lastAt ? fmtDT(r.lastAt) : '—'}</td></tr>`).join('')
+      || '<tr><td colspan="7" class="hint">No stamp cards yet. They appear when customers give their number.</td></tr>';
+  }
   function renderDashboard() {
     const d = dash, P = d.periods, hp = !!d.hideProfit;
     $('#dashNote').textContent = `Updated ${fmtTime(Date.now())}${hp ? '' : ' · profit = net sales − cost of goods − expenses'}`;
@@ -1039,6 +1122,7 @@
   function renderReport() {
     const t = report.totals;
     $('#kpis').innerHTML = [[money(t.grossCents), 'Gross'], [money(t.discountCents), 'Discounts'], [money(t.salesCents), 'Net sales'], [t.orders, 'Orders'], [money(t.avgCents), 'Average order'], [t.items, 'Items sold'],
+      ...(report.upsell?.items ? [[money(report.upsell.salesCents), `From cart suggestions · ${report.upsell.items} item${report.upsell.items === 1 ? '' : 's'}`]] : []),
       [money(report.cashIn), 'Cash in'], [money(report.cashOut), 'Cash out'], [report.voids.n ? `${report.voids.n} · ${money(report.voids.cents)}` : '0', 'Voids / refunds']]
       .map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
     const hbars = (rows, label, value, sub) => {
@@ -1142,7 +1226,7 @@
     if (document.activeElement !== $('#storeLat') && document.activeElement !== $('#storeLng')) { $('#storeLat').value = storePin ? storePin.lat.toFixed(6) : ''; $('#storeLng').value = storePin ? storePin.lng.toFixed(6) : ''; }
     const ready = !!storePin;
     $('#delToggle').disabled = !ready && !$('#delToggle').checked;
-    renderHours(); renderPromos(); renderSummaryBox();
+    renderHours(); renderPromos(); renderSummaryBox(); renderLoyaltyBox(); renderUpsellBox();
     initSetMap();
   }
   function drawTiers() {
@@ -1515,6 +1599,63 @@
     }
   });
 
+  // ===================================================================== STAMP CARD SETTINGS
+  let loyCatsDraft = null;
+  function renderLoyaltyBox() {
+    const L = settings.loyalty || {};
+    $('#loyOn').checked = !!L.enabled; $('#loyOnline').checked = !!L.online;
+    if (document.activeElement?.closest?.('.loyalty-box') == null) { $('#loyName').value = L.name || ''; $('#loyNeeded').value = L.needed || 9; $('#loyMax').value = L.maxCents ? L.maxCents / 100 : ''; $('#loyPerDay').value = L.perDay ?? ''; }
+    loyCatsDraft ||= [...(L.cats || [])];
+    $('#loyCats').innerHTML = Object.entries(CAT).map(([k, v]) => `<button type="button" data-lcat="${k}" aria-pressed="${loyCatsDraft.includes(k)}">${esc(v)}</button>`).join('');
+  }
+  $('#loyCats').addEventListener('click', e => { const b = e.target.closest('[data-lcat]'); if (!b) return; const k = b.dataset.lcat; loyCatsDraft = loyCatsDraft.includes(k) ? loyCatsDraft.filter(x => x !== k) : [...loyCatsDraft, k]; renderLoyaltyBox(); });
+  const saveLoyalty = async () => { if (await saveSettings({ loyalty: { enabled: $('#loyOn').checked, name: $('#loyName').value, needed: $('#loyNeeded').value, maxPesos: $('#loyMax').value, cats: loyCatsDraft, online: $('#loyOnline').checked, perDay: $('#loyPerDay').value } }, 'Stamp card saved')) { loyCatsDraft = null; loadCatalog(); } };
+  $('#loySave').onclick = saveLoyalty; $('#loyOn').onchange = saveLoyalty; $('#loyOnline').onchange = saveLoyalty;
+  $('#ladjSave').onclick = async () => {
+    try {
+      const c = await api('/api/staff/loyalty', { method: 'POST', body: { phone: $('#ladjPhone').value, delta: $('#ladjDelta').value, reason: $('#ladjWhy').value } });
+      $('#ladjInfo').textContent = `${c.phone} now has ${c.stamps} stamp${c.stamps === 1 ? '' : 's'}.`; toast('Stamps updated'); $('#ladjDelta').value = ''; $('#ladjWhy').value = '';
+    } catch (err) { fail(err); }
+  };
+
+  // ===================================================================== CART SUGGESTION SETTINGS
+  let upDraft = null, upPickers = [];
+  function renderUpsellBox() {
+    const U = settings.upsell || {};
+    $('#upOn').checked = U.enabled !== false; $('#upAuto').checked = !!U.auto;
+    if (upDraft) return;
+    upDraft = JSON.parse(JSON.stringify(U.rules || []));
+    drawUpRules();
+  }
+  function drawUpRules() {
+    upPickers.forEach((pk, i) => { if (upDraft[i]) upDraft[i].suggestIds = [...pk.set]; });
+    $('#upRules').innerHTML = upDraft.map((r, i) => `
+      <div class="promo-card up-rule ${r.active === false ? 'off' : ''}" data-ui="${i}">
+        <div class="promo-row"><span class="lbl">When the cart has</span><div class="chips">${Object.entries(CAT).map(([k, v]) => `<button type="button" data-ucat="${k}" aria-pressed="${r.whenCats.includes(k)}">${esc(v)}</button>`).join('')}</div></div>
+        <div class="promo-row"><span class="lbl">Suggest</span><div class="up-pick" data-upick="${i}" style="flex:1;min-width:0"></div></div>
+        <div class="promo-top"><input class="grow" data-utext value="${esc(r.text || '')}" maxlength="60" placeholder="Message (optional), e.g. Perfect with your coffee" aria-label="Message">
+          <label class="switchrow sm"><input type="checkbox" class="toggle" data-uactive ${r.active !== false ? 'checked' : ''}> ${r.active !== false ? 'On' : 'Off'}</label>
+          <button type="button" class="linkbtn bad" data-urm>Remove</button></div>
+      </div>`).join('') || '<p class="hint">No suggestions of your own yet. Tap "+ Add a suggestion", e.g. Iced Coffee → Cookie, Brownie.</p>';
+    upPickers = upDraft.map((r, i) => { const pk = itemPicker($(`[data-upick="${i}"]`)); pk.fill(r.suggestIds); return pk; });
+  }
+  $('#upRules').addEventListener('click', e => {
+    const card = e.target.closest('[data-ui]'); if (!card) return;
+    const i = +card.dataset.ui, r = upDraft[i];
+    const c = e.target.closest('[data-ucat]');
+    if (c) { const k = c.dataset.ucat; r.whenCats = r.whenCats.includes(k) ? r.whenCats.filter(x => x !== k) : [...r.whenCats, k]; c.setAttribute('aria-pressed', r.whenCats.includes(k)); }
+    if (e.target.closest('[data-urm]')) { upPickers.forEach((pk, j) => { upDraft[j].suggestIds = [...pk.set]; }); upDraft.splice(i, 1); upPickers = []; drawUpRules(); }
+  });
+  $('#upRules').addEventListener('input', e => { const card = e.target.closest('[data-ui]'); if (!card) return; const r = upDraft[+card.dataset.ui]; if (e.target.matches('[data-utext]')) r.text = e.target.value; if (e.target.matches('[data-uactive]')) r.active = e.target.checked; });
+  $('#upAdd').onclick = () => { upPickers.forEach((pk, j) => { upDraft[j].suggestIds = [...pk.set]; }); upDraft.push({ whenCats: [], whenIds: [], suggestIds: [], text: '', active: true }); upPickers = []; drawUpRules(); };
+  const saveUpsell = async (rulesToo = true) => {
+    upPickers.forEach((pk, j) => { if (upDraft[j]) upDraft[j].suggestIds = [...pk.set]; });
+    const body = { enabled: $('#upOn').checked, auto: $('#upAuto').checked, ...(rulesToo ? { rules: upDraft } : {}) };
+    if (await saveSettings({ upsell: body }, 'Suggestions saved')) { if (rulesToo) { upDraft = null; upPickers = []; renderUpsellBox(); } loadCatalog(); }
+  };
+  $('#upSave').onclick = () => saveUpsell(true);
+  $('#upOn').onchange = () => saveUpsell(false); $('#upAuto').onchange = () => saveUpsell(false);
+
   // ===================================================================== NIGHTLY SUMMARY
   function renderSummaryBox() {
     const S = settings.summary || {}, I = settings.integration || {};
@@ -1543,13 +1684,14 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
+    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand',
     'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',
   };
   const WARN = new Set(['order.void', 'order.refund', 'expense.delete', 'product.delete', 'login.failed', 'payment.reject', 'user.delete', 'code.delete']);
   const MONEY_KEYS = new Set(['price', 'cost', 'cents', 'totalCents', 'openingCents', 'countedCents', 'expectedCents', 'overShortCents']);
-  const LABEL = { label: 'Discount', channel: 'Works', maxUses: 'Max uses', startsOn: 'Starts', endsOn: 'Ends', price: 'Price', cost: 'Cost', name: 'Name', cat: 'Category', hot: 'Hot', available: 'Available', low: 'Low-stock alert', grp: 'Applies to', active: 'Active', role: 'Role', username: 'Username', perms: 'Permissions', password: 'Password' };
+  const LABEL = { delta: 'Stamps',  label: 'Discount', channel: 'Works', maxUses: 'Max uses', startsOn: 'Starts', endsOn: 'Ends', price: 'Price', cost: 'Cost', name: 'Name', cat: 'Category', hot: 'Hot', available: 'Available', low: 'Low-stock alert', grp: 'Applies to', active: 'Active', role: 'Role', username: 'Username', perms: 'Permissions', password: 'Password' };
   const val = (k, v) => (v == null || v === '' ? '—' : MONEY_KEYS.has(k) ? money(v) : k === 'cat' ? CAT[v] || v : k === 'channel' ? CHANNEL[v] || v : typeof v === 'boolean' ? (v ? 'yes' : 'no') : Array.isArray(v) ? v.join(', ') : esc(String(v)));
   function acDetail(e) {
     const d = e.detail || {};

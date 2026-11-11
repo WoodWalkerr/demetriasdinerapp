@@ -471,7 +471,30 @@
     for (let r = 1; r <= getU.length && (!b.max || r <= b.max); r++) { const chosen = new Set(getU.slice(0, r)); if (buyU.filter(u => !chosen.has(u)).length >= r * per) best = r; else break; }
     return { offCents: getU.slice(0, best).reduce((a, u) => a + Math.round((u.base * Math.min(100, b.getPct)) / 10000) * 100, 0), rewards: best, need: best ? '' : buyU.length < per ? 'buy' : 'get' };
   }
-  const pricedLines = () => cart.map(l => ({ id: l.id, qty: l.qty, unitCents: unitOf(l), addons: (l.addons || []).map(id => ({ cents: addonById[id]?.price || 0 })) }));
+  const pricedLines = () => cart.map(l => ({ id: l.id, cat: byId[l.id]?.cat, name: byId[l.id]?.name, qty: l.qty, unitCents: unitOf(l), addons: (l.addons || []).map(id => ({ cents: addonById[id]?.price || 0 })) }));
+  // ---------- stamp card (same rules as lib/loyalty.js) ----------
+  let stamp = { phone: ls.get('dd-stamp-phone', '') || '', card: null, redeem: false };
+  const loyQualifies = (cfg, l) => (cfg.ids?.length || cfg.cats?.length ? cfg.ids.includes(l.id) || cfg.cats.includes(l.cat) : kindOf(l.cat) === 'drink');
+  const loyEarn = (cfg, lines, reward = 0) => Math.max(0, lines.filter(l => loyQualifies(cfg, l)).reduce((a, l) => a + l.qty, 0) - reward);
+  function loyReward(cfg, lines, used) {
+    let best = null;
+    lines.forEach((l, i) => { if (!loyQualifies(cfg, l) || l.qty - (used?.get(i) || 0) <= 0) return; const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); if (!best || base > best.base) best = { i, base }; });
+    return best ? { offCents: cfg.maxCents ? Math.min(best.base, cfg.maxCents) : best.base, line: best.i } : { offCents: 0, line: -1 };
+  }
+  /** Everything the cart total needs, in the server's order: Buy 1 Take 1 → stamp card reward → promo code. */
+  function cartMath(at = whenAt() || new Date()) {
+    const pl = pricedLines(), deal = applyDeals(pl, dealsAt(at)), cfg = cat.loyalty || {};
+    let loy = { off: 0, earn: 0, name: '' };
+    if (cfg.enabled && stamp.card) {
+      if (stamp.redeem && stamp.card.ready && cfg.online) {
+        const r = loyReward(cfg, pl, deal.used);
+        if (r.offCents) { deal.used.set(r.line, (deal.used.get(r.line) || 0) + 1); loy = { off: r.offCents, earn: loyEarn(cfg, pl, 1), name: pl[r.line].name }; }
+      } else loy.earn = loyEarn(cfg, pl);
+      if (stamp.card.todayLeft != null) { loy.capped = loy.earn > stamp.card.todayLeft; loy.earn = Math.min(loy.earn, stamp.card.todayLeft); } // max stamps per day
+    }
+    const gross = subtotal(), sub = gross - deal.offCents - loy.off;
+    return { pl, deal, loy, gross, sub, disc: codeOff(sub, pl, deal.used) };
+  }
   const codeOff = (sub, lines = [], used = null) => {
     if (!promo || sub < (promo.minCents || 0)) return 0;
     if (promo.kind === 'bogo') return Math.min(bogoReward(promo.bogo, lines, used).offCents, sub);
@@ -480,7 +503,7 @@
     return Math.max(0, Math.min(off, sub));
   };
   /** The promo code's discount for the cart as it is now (after Buy 1 Take 1 deals). */
-  const cartCodeOff = () => { const pl = pricedLines(), d = applyDeals(pl, dealsAt(whenAt() || new Date())); return codeOff(subtotal() - d.offCents, pl, d.used); };
+  const cartCodeOff = () => cartMath().disc;
   const optsLabel = (o) => (o ? [o.sweet != null ? o.sweet + '% sweet' : null, o.ice].filter(Boolean).join(' · ') : '');
 
   // ---------- drawer ----------
@@ -653,21 +676,22 @@
         ${adds.length ? `<span class="addons">+ ${adds.map(a => `${esc(a.name)} (${pesos(a.price)})`).join(', ')}</span>` : ''}</div>`;
     }).join('') : `<div class="empty">Nothing here yet. Tap <b>Add +</b> on anything from the menu.</div>`;
     const at = whenAt() || new Date();
-    const pl = pricedLines(), deal = applyDeals(pl, dealsAt(at));
-    const gross = subtotal(), sub = gross - deal.offCents; // promo codes apply to what's left after the deal
-    const fee = deliveryFee(), del = isDelivery(), disc = codeOff(sub, pl, deal.used);
+    const { pl, deal, loy, gross, sub, disc } = cartMath(at); // deals, then the stamp card, then the promo code
+    const fee = deliveryFee(), del = isDelivery();
+    $('#loyLbl').hidden = $('#loyTotal').hidden = !loy.off; $('#loyLbl').textContent = `🎟️ Free ${loy.name}`; $('#loyTotal').textContent = '−' + pesos(loy.off);
+    renderStamp(loy); renderSuggest();
     const bogoNeed = promo?.kind === 'bogo' && cart.length && !disc ? bogoReward(promo.bogo, pl, deal.used).need : '';
     $('#dealLbl').hidden = $('#dealTotal').hidden = !deal.offCents;
     $('#dealLbl').textContent = `🎉 ${deal.applied.map(a => a.title + (a.pairs > 1 ? ` ×${a.pairs}` : '')).join(', ')}`; $('#dealTotal').textContent = '−' + pesos(deal.offCents);
     $('#dealHint').hidden = !(cart.length && deal.waiting.length);
     if (deal.waiting.length) { const w = deal.waiting[0]; $('#dealHint').innerHTML = `🎉 Add 1 more from <b>${esc(w.title)}</b> and ${esc(dealWhat(w))}! <button class="linkbtn" type="button" data-f-deal="${esc(w.id)}">See items</button>`; }
-    $('#sums').hidden = (!del && !disc && !deal.offCents) || !cart.length; $('#subTotal').textContent = pesos(gross); $('#feeTotal').textContent = pin?.feeCents != null ? pesos(fee) : '—';
+    $('#sums').hidden = (!del && !disc && !deal.offCents && !loy.off) || !cart.length; $('#subTotal').textContent = pesos(gross); $('#feeTotal').textContent = pin?.feeCents != null ? pesos(fee) : '—';
     $('#feeLbl').hidden = $('#feeTotal').hidden = !del;
     $('#discLbl').hidden = $('#discTotal').hidden = !disc; $('#discTotal').textContent = '−' + pesos(disc);
     $('#discLbl').textContent = promo ? `Promo ${promo.code}` : 'Discount';
     $('#codeRow').hidden = !!promo; $('#codeOn').hidden = !promo;
     if (promo) $('#codeOn').innerHTML = `<span><b>${esc(promo.code)}</b> · ${esc(promo.label)}${disc ? ` · <b>−${pesos(disc)}</b>` : bogoNeed ? `<br><small>${bogoNeed === 'buy' ? `Buy ${promo.bogo.buyQty > 1 ? promo.bogo.buyQty + ' × ' : ''}${esc(promo.bogo.buyLabel)} to use this code.` : `Add ${esc(promo.bogo.getLabel)} to your order. It's ${promo.bogo.getPct >= 100 ? 'free' : promo.bogo.getPct + '% off'} with this code!`} <button class="linkbtn" type="button" data-bogo-show="${bogoNeed}">Show me</button></small>` : cart.length && sub < promo.minCents ? `<br><small>Add ${pesos(promo.minCents - sub)} more to use this code (minimum ${pesos(promo.minCents)}).</small>` : ''}</span><button class="linkbtn" type="button" id="codeRemove">Remove</button>`;
-    const totalNow = gross - deal.offCents - disc + fee;
+    const totalNow = gross - deal.offCents - loy.off - disc + fee;
     $('#total').textContent = pesos(totalNow);
     let why = '';
     if (apiState === 'loading') why = 'Connecting to the order system…';
@@ -839,6 +863,65 @@
       openPopup(fresh[0], true);
     }, 3000);
   }
+
+  // ---------- stamp card in the cart ----------
+  const stampDots = (n, need) => `<div class="stamps">${Array.from({ length: need }, (_, i) => `<i class="${i < n ? 'on' : ''}">${i < n ? '🐾' : ''}</i>`).join('')}<i class="gift">🎁</i></div>`;
+  function renderStamp(loy) {
+    const cfg = cat.loyalty || {};
+    $('#stampF').hidden = !cfg.enabled; $('#visitStamps').hidden = !cfg.enabled;
+    if (!cfg.enabled) return;
+    $('#stampName').textContent = cfg.name;
+    if (document.activeElement !== $('#o-stamp') && !$('#o-stamp').value && stamp.phone) $('#o-stamp').value = stamp.phone;
+    const c = stamp.card, box = $('#stampInfo');
+    box.hidden = !c; if (!c) return;
+    const need = cfg.needed, after = Math.min(need, c.stamps + (loy?.earn || 0));
+    box.innerHTML = stampDots(Math.min(c.stamps, need), need) + `<p>${c.ready ? `<b>🎉 You've earned a free ${cfg.ids?.length || cfg.cats?.length ? 'item' : 'drink'}!</b>` : `<b>${c.stamps} of ${need}</b> stamps`}${c.pending ? ` · ${c.pending} more once paid` : ''}${!c.ready && loy?.earn ? ` · this order adds <b>${loy.earn}</b>${after >= need ? ' → <b>free one next time!</b>' : ''}` : ''}${!c.ready && !loy?.earn && c.todayLeft === 0 && cart.length ? " · <b>today's stamp is already in</b>, come back tomorrow for the next one!" : ''}</p>${c.perDay && !c.ready ? `<small>${c.perDay === 1 ? '1 stamp' : c.perDay + ' stamps'} per day.</small>` : ''}`
+      + (c.ready ? (cfg.online ? `<label class="switchrow sm"><input type="checkbox" class="toggle" id="stampUse" ${stamp.redeem ? 'checked' : ''}> Use it on this order${loy?.off ? ` (−${pesos(loy.off)})` : ''}</label>` : '<small>Show this number at the counter to claim it.</small>') : '');
+  }
+  async function checkStamp(quiet, keepNote) {
+    const v = $('#o-stamp').value.trim() || stamp.phone; if (!v || !cat.loyalty?.enabled) return;
+    try {
+      const c = await api('/api/orders?stamps=' + encodeURIComponent(v));
+      const phone = v.replace(/\D/g, '').replace(/^63/, '0').replace(/^9/, '09');
+      stamp = { ...stamp, phone, card: { ...c, phone } }; ls.set('dd-stamp-phone', phone); $('#o-stamp').value = phone;
+    } catch (err) { stamp.card = null; if (!quiet) setNote(err.message, true); }
+    if (keepNote) renderStamp(cartMath().loy); else renderCart(); // keepNote: don't replace "Order sent" with the empty-cart text
+  }
+  $('#stampCheck').onclick = () => checkStamp(false);
+  $('#o-stamp').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkStamp(false); } });
+  $('#o-stamp').addEventListener('input', () => { if (stamp.card) { stamp.card = null; stamp.redeem = false; renderCart(); } });
+  $('#stampInfo').addEventListener('change', e => { if (e.target.id === 'stampUse') { stamp.redeem = e.target.checked; renderCart(); } });
+  $('#visitStamps').onclick = () => { openDrawer(); setTimeout(() => { $('#o-stamp').scrollIntoView({ block: 'center' }); $('#o-stamp').focus(); }, 300); };
+
+  // ---------- "Add something?" suggestions in the cart (same order as the POS: lib/upsell.js) ----------
+  function suggestions(max = 2) {
+    const up = cat.upsell; if (!up?.enabled || !cart.length) return [];
+    const inCart = new Set(cart.map(l => l.id)), out = [];
+    const push = (id, why) => { const it = byId[id]; if (it && it.price != null && !it.soldOut && !inCart.has(id) && !out.some(o => o.id === id)) out.push({ id, why }); };
+    for (const r of up.rules || []) if (cart.some(l => r.whenIds.includes(l.id) || r.whenCats.includes(byId[l.id]?.cat))) r.suggestIds.forEach(id => push(id, r.text));
+    if (up.auto) cart.forEach(l => (up.pairs?.[l.id] || []).forEach(id => push(id, 'Often ordered together')));
+    const kinds = new Set(cart.map(l => kindOf(byId[l.id]?.cat))), order = [...(up.popular || []), ...cat.items.map(i => i.id)];
+    if (kinds.has('drink') && !kinds.has('food')) order.filter(id => byId[id]?.cat === 'pastries').forEach(id => push(id, 'Great with your drink'));
+    if (kinds.has('food') && !kinds.has('drink')) order.filter(id => kindOf(byId[id]?.cat) === 'drink').forEach(id => push(id, 'Something to drink?'));
+    return out.slice(0, max);
+  }
+  function renderSuggest() {
+    const list = suggestions(2), box = $('#cartSuggest');
+    box.hidden = !list.length;
+    box.innerHTML = list.length ? `<h4>Add something?</h4>` + list.map(x => { const it = byId[x.id], pr = promoFor(it);
+      return `<div class="sug"><div class="sug-art">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : artFor(it)}</div>
+        <div class="sug-txt"><b>${esc(it.name)}</b><small>${esc(x.why || CAT_LABEL[it.cat] || '')}</small></div>
+        <button class="btn sm" type="button" data-sug="${esc(it.id)}">+ ${pesos(it.price - (pr?.off || 0))}</button></div>`; }).join('') : '';
+  }
+  $('#cartSuggest').addEventListener('click', e => {
+    const b = e.target.closest('[data-sug]'); if (!b) return;
+    const it = byId[b.dataset.sug]; if (!it) return;
+    const drink = kindOf(it.cat) === 'drink', opts = drink ? { sweet: 75, ice: it.hot ? null : 'Regular ice' } : null;
+    const key = it.id + '|' + JSON.stringify(opts) + '||up';
+    const ex = cart.find(l => l.key === key);
+    if (ex) ex.qty = Math.min(20, ex.qty + 1); else cart.push({ key, id: it.id, qty: 1, opts, addons: [], upsell: true });
+    toast(`${it.name} added${drink ? ' (75% sweet, regular ice)' : ''}`); renderCart();
+  });
 
   // ---------- order again (past orders are remembered on this phone) ----------
   const lineName = (l) => `${byId[l.id]?.name || ''}${l.qty > 1 ? ' × ' + l.qty : ''}`;
@@ -1018,19 +1101,22 @@
         name, note: $('#o-note').value.trim(), paymentMethod: payMethod(),
         orderType: del ? 'delivery' : 'pickup', pickupMinutes: +$('#o-pickup').value, scheduleAt: whenAt()?.toISOString(),
         delivery: del ? { lat: pin.lat, lng: pin.lng, address: contact.address, landmark: contact.landmark, phone: contact.phone } : undefined,
-        items: cart.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons })),
+        items: cart.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons, ...(l.upsell ? { upsell: true } : {}) })),
+        loyaltyPhone: stamp.card ? stamp.card.phone : undefined, loyaltyRedeem: !!(stamp.redeem && stamp.card?.ready && cat.loyalty?.online),
         promoCode: promo && cartCodeOff() ? promo.code : undefined,
       }) });
       mine = [{ ...o, at: Date.now() }, ...mine].slice(0, 5);
       history = [{ at: Date.now(), code: o.code, totalCents: o.totalCents, lines: cart.map(({ key, id, qty, opts, addons }) => ({ key, id, qty, opts, addons })) }, ...history].slice(0, 6);
       ls.set('dd-history', history);
       cart = []; $('#o-note').value = ''; $('#o-when').value = 'now';
+      if (stamp.card) { const earned = o.loyaltyEarn || 0; stamp.redeem = false; checkStamp(true, true); if (earned) toast(`Order #${o.code} placed · +${earned} stamp${earned === 1 ? '' : 's'} once it's paid`); }
       promo = null; ls.set('dd-code', null);
       busy = false; renderCart(); renderMine();
       if (o.checkoutUrl) { location.href = o.checkoutUrl; return; }
       if (o.qr) { openQr(mine[0]); return; }
       setNote(`Order #${o.code} sent · ${pesos(o.totalCents)}. We'll start on it shortly.`);
       toast(`Order #${o.code} placed`);
+      offerInstall(5000);
     } catch (err) {
       if (promo && err.message && err.message.includes(promo.code)) { promo = null; ls.set('dd-code', null); }
       busy = false; setNote(err.message || "Couldn't send your order. Check your connection and try again.", true); renderCart();
@@ -1074,6 +1160,7 @@
   });
 
   // ---------- load menu; stay up to date without reloading ----------
+  let stampLooked = false;
   function apply(d) {
     cat = d; byId = Object.fromEntries(d.items.map(i => [i.id, i])); addonById = Object.fromEntries(d.addons.map(a => [a.id, a]));
     if (d.categories) CAT_LABEL = d.categories;
@@ -1082,6 +1169,7 @@
     if (pin && cat.delivery.enabled) pin = { ...quote(pin.lat, pin.lng) };
     lastSig = promoSig();
     render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart(); maybeAutoPopup();
+    if (cat.loyalty?.enabled && stamp.phone && !stamp.card && !stampLooked) { stampLooked = true; checkStamp(true); }
   }
   async function loadMenu() {
     try { apply(await api('/api/menu')); checkBuild(cat.build); }
@@ -1119,6 +1207,38 @@
     window.history.replaceState(null, '', location.pathname + '#menu'); // window.history: "history" above is our saved-orders list
     setTimeout(() => { openDrawer(); setNote(cancelled ? "Payment wasn't completed, so your order hasn't been sent. You can finish paying below." : 'Thanks! Confirming your payment…', cancelled); }, 300);
   })();
+
+  // ---------- install as an app ("Add to Home Screen") ----------
+  // Shown to returning customers (2nd visit, or after an order), never inside the installed app,
+  // and not again for 30 days after "Not now". Android/Chrome: real install button. iPhone: the steps.
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  }
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios|chrome|android/i.test(navigator.userAgent);
+  let installEvt = null;
+  try { if (!sessionStorage.getItem('dd-visit')) { sessionStorage.setItem('dd-visit', '1'); ls.set('dd-visits', (ls.get('dd-visits', 0) || 0) + 1); } } catch {}
+  const installWanted = () => !standalone && (ls.get('dd-visits', 0) >= 2 || ls.get('dd-history', []).length > 0) && Date.now() - (ls.get('dd-install-later', 0) || 0) > 30 * 86400e3;
+  function offerInstall(after = 4000) {
+    if (!installWanted() || !(installEvt || (isIOS && isSafari))) return;
+    setTimeout(() => {
+      if (document.querySelector('dialog[open]') || drawer.classList.contains('open') || !installWanted()) return;
+      $('#installSub').textContent = isIOS && !installEvt ? 'Add it to your home screen: order in two taps. Free, no app store.' : 'Order in two taps from your home screen. Free, no app store.';
+      $('#installBtn').textContent = isIOS && !installEvt ? 'How?' : 'Install';
+      $('#installBar').hidden = false; requestAnimationFrame(() => $('#installBar').classList.add('show'));
+    }, after);
+  }
+  const hideInstall = () => { $('#installBar').classList.remove('show'); setTimeout(() => { $('#installBar').hidden = true; }, 300); };
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; offerInstall(6000); });
+  window.addEventListener('appinstalled', () => { installEvt = null; hideInstall(); toast("Demetria's is on your home screen 🐱"); });
+  $('#installBtn').onclick = async () => {
+    if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => ({})); installEvt = null; hideInstall(); if (r.outcome !== 'accepted') ls.set('dd-install-later', Date.now()); }
+    else { hideInstall(); $('#iosDlg').showModal(); }
+  };
+  $('#installClose').onclick = () => { ls.set('dd-install-later', Date.now()); hideInstall(); };
+  $('#iosOk').onclick = () => { $('#iosDlg').close(); ls.set('dd-install-later', Date.now()); };
+  if (isIOS && isSafari) offerInstall(9000);
 
   applyHero(); applyPay(); applyDelivery(); renderCart(); renderMine();
   loadMenu(); pollMine();

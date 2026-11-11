@@ -6,6 +6,8 @@ import { openState, upcomingWindows, TZ } from '../lib/time.js';
 import { paymongoConfigured } from '../lib/paymongo.js';
 import { popupCodes, popupQuery } from '../lib/promocodes.js';
 import { dealsQuery, dealsFor, publicDeal } from '../lib/deals.js';
+import { publicLoyalty } from '../lib/loyalty.js';
+import { upsellFeed } from '../lib/upsell.js';
 
 // GET /api/menu         → products, add-ons, payment and delivery options (one database round trip)
 // GET /api/menu?sync=1  → just { v, build }: tiny check pages make every few seconds to stay up to date
@@ -35,6 +37,7 @@ export default route(['GET'], async (req, res) => {
   res.setHeader('Vercel-CDN-Cache-Control', 'max-age=3, stale-while-revalidate=20');
   const [[row], products, addons, [v], featured, dealRows] = await batch([settingsQuery(), productsQuery(), addonsQuery(), versionQuery(), popupQuery(), dealsQuery()]);
   const s = shapeSettings(row);
+  const upsell = await upsellFeed(s.upsell);
   const online = s.payOnline && paymongoConfigured();
   const qr = qrReady(s);
   const d = s.delivery;
@@ -60,6 +63,8 @@ export default route(['GET'], async (req, res) => {
     featured: popupCodes(featured),
     // Buy 1 Take 1 deals for online orders (Staff → Settings → Buy 1 Take 1). The browser checks days/dates for the order time.
     deals: dealsFor(dealRows, 'online').map(publicDeal),
+    loyalty: publicLoyalty(s.loyalty), // stamp card rules (no customer data)
+    upsell,                             // "Add something?" cart suggestions
     items: products.map(publicProduct),
     addons: addons.filter((a) => a.active).map(publicAddon),
   });

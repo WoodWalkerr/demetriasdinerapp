@@ -13,6 +13,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="/css/site.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Demetria's">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 </head>
 <body>
 <header>
@@ -154,6 +161,7 @@
         <h2>Stay for the comfort.</h2>
         <p>Order online for pickup or delivery, now or ahead for later, and pay with GCash, Maya, or at the counter. Message us on Facebook for big orders.</p>
         <button class="btn" type="button" id="visitOrder">Start an order</button>
+        <button class="btn ghost on-dark" type="button" id="visitStamps" hidden>🎟️ Check my stamps</button>
       </div>
       <div class="panel light">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -188,6 +196,7 @@
   <form class="d-body" id="orderForm" novalidate>
     <div class="lines" id="lines"></div>
     <p class="deal-hint" id="dealHint" hidden></p>
+    <div class="cart-suggest" id="cartSuggest" hidden></div>
     <fieldset class="otype" id="oType" hidden>
       <legend>How do you want it?</legend>
       <input type="radio" name="otype" id="ot-pickup" value="pickup" checked><label for="ot-pickup"><b>Pickup</b><small>at the counter</small></label>
@@ -224,16 +233,40 @@
       <div class="code-row" id="codeRow"><input id="o-code" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. BDAY20"><button class="btn ghost" type="button" id="codeApply">Apply</button></div>
       <div class="code-on" id="codeOn" hidden></div>
     </div>
+    <div class="field stamp-f" id="stampF" hidden>
+      <label for="o-stamp">🎟️ <span id="stampName">Stamp card</span>: your mobile number (optional)</label>
+      <div class="code-row"><input id="o-stamp" inputmode="tel" maxlength="16" autocomplete="tel" placeholder="0917 123 4567"><button class="btn ghost" type="button" id="stampCheck">Check</button></div>
+      <div class="stamp-card" id="stampInfo" hidden></div>
+    </div>
     <div class="field"><label for="o-note">Note for the barista</label><textarea id="o-note" maxlength="200" placeholder="Allergies, extra hot, name on cup…"></textarea></div>
     <div class="mine" id="mine" hidden></div>
   </form>
   <div class="d-foot">
-    <dl class="sums" id="sums" hidden><dt>Subtotal</dt><dd id="subTotal">₱0</dd><dt id="dealLbl" hidden>Buy 1 Take 1</dt><dd id="dealTotal" hidden>−₱0</dd><dt id="discLbl" hidden>Discount</dt><dd id="discTotal" hidden>−₱0</dd><dt id="feeLbl">Delivery fee</dt><dd id="feeTotal">₱0</dd></dl>
+    <dl class="sums" id="sums" hidden><dt>Subtotal</dt><dd id="subTotal">₱0</dd><dt id="dealLbl" hidden>Buy 1 Take 1</dt><dd id="dealTotal" hidden>−₱0</dd><dt id="loyLbl" hidden>Stamp card</dt><dd id="loyTotal" hidden>−₱0</dd><dt id="discLbl" hidden>Discount</dt><dd id="discTotal" hidden>−₱0</dd><dt id="feeLbl">Delivery fee</dt><dd id="feeTotal">₱0</dd></dl>
     <div class="total">Total <span id="total">₱0</span></div>
     <button class="btn" type="submit" form="orderForm" id="placeBtn" disabled>Place order</button>
     <p class="note" id="orderNote" role="status"></p>
   </div>
 </aside>
+
+<!-- "Install Demetria's" (Add to Home Screen) for returning customers -->
+<div class="install-bar" id="installBar" role="dialog" aria-label="Install Demetria's" hidden>
+  <img src="/icons/icon-192.png" alt="" width="44" height="44">
+  <div><b>Get the Demetria's app</b><small id="installSub">Order in two taps from your home screen. Free, no app store.</small></div>
+  <button class="btn sm" type="button" id="installBtn">Install</button>
+  <button class="x" type="button" id="installClose" aria-label="Not now">×</button>
+</div>
+<dialog id="iosDlg" class="ios-dlg" aria-labelledby="iosTitle">
+  <div class="dlg">
+    <h3 id="iosTitle">Add Demetria's to your home screen</h3>
+    <ol>
+      <li>Tap the <b>Share</b> button <span class="ios-share" aria-hidden="true">⬆︎</span> at the bottom of Safari (top right on iPad).</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Tap <b>Add</b>. The cat icon appears on your home screen.</li>
+    </ol>
+    <button class="btn" type="button" id="iosOk">Got it</button>
+  </div>
+</dialog>
 
 <!-- Promo pop-up: codes the shop advertises (Staff → Settings → Promo codes → Website pop-up) -->
 <dialog id="promoDlg" class="promo-pop" aria-labelledby="ppTitle">

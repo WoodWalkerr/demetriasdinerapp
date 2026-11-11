@@ -6,6 +6,7 @@ import { loadCatalog, priceLine, makeCode, takeStock, returnStock, deliveryQuote
 import { openState, TZ } from '../lib/time.js';
 import { checkCode, codeDiscount, codeLabel, publicCode, bogoReward, bogoNeed } from '../lib/promocodes.js';
 import { activeDeals, applyDeals, dealsDiscountLabel } from '../lib/deals.js';
+import { applyLoyalty, cardOf, normPhone } from '../lib/loyalty.js';
 import { createCheckout, paymongoConfigured, baseUrl, syncPayment } from '../lib/paymongo.js';
 
 // Public order endpoints (vercel.json rewrites /api/orders/:id → /api/orders?id=:id)
@@ -18,6 +19,15 @@ export default route(['GET', 'POST'], async (req, res) => {
   await ensureSchema();
   const id = req.query.id;
   if (!id) {
+    // GET /api/orders?stamps=09171234567 → how many stamps that card has (no name or order details)
+    if (req.method === 'GET' && req.query.stamps) {
+      const cfg = (await getSettings()).loyalty;
+      if (!cfg.enabled) throw new HttpError(404, 'The stamp card is not available right now.');
+      const phone = normPhone(req.query.stamps);
+      if (!phone) throw new HttpError(400, 'Enter a mobile number, like 0917 123 4567.');
+      const c = await cardOf(phone, cfg);
+      return res.status(200).json({ stamps: c.stamps, pending: c.pending, needed: c.needed, ready: c.ready, today: c.today, perDay: c.perDay, todayLeft: c.todayLeft });
+    }
     if (req.method === 'GET' && req.query.promo) return res.status(200).json(publicCode(await checkCode(req.query.promo, { channel: 'online' })));
     if (req.method !== 'POST') throw new HttpError(405, 'Method not allowed');
     return createOrder(req, res);
@@ -124,15 +134,17 @@ async function createOrder(req, res) {
   // Buy 1 Take 1 deals (automatic, priced at the order time), then the promo code on what's left.
   // Both are on the items only (not the delivery fee), and checked again here.
   const deal = applyDeals(items, await activeDeals('online', scheduled || now));
-  const afterDeal = subtotal - deal.offCents;
+  // Stamp card: earn stamps; with a full card, one qualifying item is free (claimed online only if allowed in Settings).
+  const loy = await applyLoyalty(settings.loyalty, { phone: b.loyaltyPhone, redeem: !!b.loyaltyRedeem, items, used: deal.used, channel: 'online' });
+  const afterDeal = subtotal - deal.offCents - loy.off;
   let codeOff = 0, promo = null;
   if (b.promoCode) {
     promo = await checkCode(b.promoCode, { channel: 'online', subtotal: afterDeal });
     codeOff = codeDiscount(promo, afterDeal, items, deal.used);
     if (promo.kind === 'bogo' && !codeOff) throw new HttpError(409, bogoNeed(promo, bogoReward(promo.bogo, items, deal.used).need));
   }
-  const discount = deal.offCents + codeOff;
-  const discountType = [dealsDiscountLabel(deal.applied), promo ? `Promo ${promo.code} · ${codeLabel(promo)}` : ''].filter(Boolean).join(' + ') || null;
+  const discount = deal.offCents + loy.off + codeOff;
+  const discountType = [dealsDiscountLabel(deal.applied), loy.label, promo ? `Promo ${promo.code} · ${codeLabel(promo)}` : ''].filter(Boolean).join(' + ') || null;
   const total = subtotal - discount + fee;
   const order = { id: crypto.randomUUID(), token: crypto.randomBytes(18).toString('base64url'), code: makeCode('D') };
   const payStatus = pm.online ? 'pending' : pm.manual ? 'awaiting_proof' : 'unpaid';
@@ -141,11 +153,12 @@ async function createOrder(req, res) {
   try {
     await sql`INSERT INTO orders (id, code, token, name, pickup_label, pickup_at, note, items, total_cents, subtotal_cents,
                 payment_method, payment_status, order_type, delivery, delivery_fee_cents, stock_applied, scheduled_for,
-                discount_type, discount_cents, promo_code, deal_cents, deals)
+                discount_type, discount_cents, promo_code, deal_cents, deals, loyalty_phone, loyalty_earn, loyalty_used, loyalty_cents)
               VALUES (${order.id}, ${order.code}, ${order.token}, ${name}, ${pickupLabel}, ${pickupAt}, ${clean(b.note, 200)},
                 ${JSON.stringify(items)}::jsonb, ${total}, ${subtotal}, ${method}, ${payStatus},
                 ${isDelivery ? 'delivery' : 'pickup'}, ${delivery ? JSON.stringify(delivery) : null}::jsonb, ${fee}, ${took}, ${scheduled ? scheduled.toISOString() : null},
-                ${discountType}, ${discount}, ${promo?.code || null}, ${deal.offCents}, ${deal.applied.length ? JSON.stringify(deal.applied) : null}::jsonb)`;
+                ${discountType}, ${discount}, ${promo?.code || null}, ${deal.offCents}, ${deal.applied.length ? JSON.stringify(deal.applied) : null}::jsonb,
+                ${loy.phone}, ${loy.earn}, ${loy.used}, ${loy.off})`;
   } catch (e) {
     if (took) await returnStock({ id: order.id, items, stock_applied: true }, `Failed order #${order.code}`);
     throw e;
@@ -156,7 +169,7 @@ async function createOrder(req, res) {
     try {
       // PayMongo adds up the lines itself and can't take a negative "discount" line, so a discounted order is sent as one line.
       const lines = discount
-        ? [{ name: `Order #${order.code} (${items.reduce((a, i) => a + i.qty, 0)} items, ${[deal.applied.length ? 'Buy 1 Take 1' : '', promo?.code].filter(Boolean).join(' + ')} −₱${(discount / 100).toLocaleString('en-PH')}${fee ? ', incl. delivery' : ''})`, qty: 1, unitCents: total, opts: '' }]
+        ? [{ name: `Order #${order.code} (${items.reduce((a, i) => a + i.qty, 0)} items, ${[deal.applied.length ? 'Buy 1 Take 1' : '', loy.off ? 'stamp card' : '', promo?.code].filter(Boolean).join(' + ')} −₱${(discount / 100).toLocaleString('en-PH')}${fee ? ', incl. delivery' : ''})`, qty: 1, unitCents: total, opts: '' }]
         : fee ? [...items, { name: 'Delivery fee', qty: 1, unitCents: fee, opts: '' }] : items;
       const c = await createCheckout({ order: { ...order }, items: lines, method, baseUrl: baseUrl(req) });
       checkoutUrl = c.url;
@@ -172,7 +185,8 @@ async function createOrder(req, res) {
     id: order.id, token: order.token, code: order.code, status: 'new',
     paymentMethod: method, paymentStatus: payStatus, checkoutUrl,
     qr: method === 'qrph' ? qrPublic(settings) : null,
-    totalCents: total, deliveryFeeCents: fee, discountCents: discount, promoCode: promo?.code || null, dealCents: deal.offCents, deals: deal.applied, orderType: isDelivery ? 'delivery' : 'pickup',
+    totalCents: total, deliveryFeeCents: fee, discountCents: discount, promoCode: promo?.code || null, dealCents: deal.offCents, deals: deal.applied,
+    loyaltyCents: loy.off, loyaltyEarn: loy.adds ?? loy.earn, orderType: isDelivery ? 'delivery' : 'pickup',
     pickupLabel, pickupAt, scheduledFor: scheduled ? scheduled.toISOString() : null, createdAt: new Date().toISOString(), items, messages: [],
   });
 }

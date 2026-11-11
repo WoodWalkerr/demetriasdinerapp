@@ -1,0 +1,21 @@
+{
+  "name": "Demetria's Diner",
+  "short_name": "Demetria's",
+  "description": "Come for the drinks, stay for the comfort. Order coffee, matcha, milk tea and food for pickup or delivery.",
+  "id": "/",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF9E8",
+  "theme_color": "#066B23",
+  "categories": ["food", "shopping"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Order now", "url": "/?source=app#menu", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

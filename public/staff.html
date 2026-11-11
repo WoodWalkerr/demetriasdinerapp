@@ -107,6 +107,12 @@
         <div class="pt-head"><h2>Ticket</h2><button class="linkbtn" type="button" id="posClear">Clear</button></div>
         <div class="banner warn" id="posShiftBanner" hidden>Open your shift first. <a href="#shift">Go to Shift</a></div>
         <div class="pt-lines" id="posLines"></div>
+        <div class="pos-suggest" id="posSuggest" hidden></div>
+        <div class="pos-stamps" id="posStampsF" hidden>
+          <div class="field"><label for="posStampPhone">🎟️ Stamp card (customer's mobile)</label>
+            <div class="code-row"><input id="posStampPhone" inputmode="tel" maxlength="16" placeholder="0917 123 4567" autocomplete="off"><button class="btn ghost" type="button" id="posStampCheck">Check</button></div></div>
+          <div class="pos-stamp-info" id="posStampInfo" hidden></div>
+        </div>
         <div class="row2">
           <div class="field"><label for="posName">Customer</label><input id="posName" maxlength="40" placeholder="Walk-in"></div>
           <div class="field"><label for="posType">Type</label><select id="posType"><option value="dine-in">Dine-in</option><option value="takeout">Takeout</option></select></div>
@@ -268,6 +274,10 @@
         <details><summary>Show as table</summary><div class="table-wrap"><table class="otable" id="seriesTable"></table></div></details>
       </div>
       <div class="records" id="records"></div>
+      <div class="box regulars-box" id="regularsBox" style="margin-top:16px" hidden>
+        <div class="view-head" style="margin:0"><h3>🎟️ Top regulars (stamp card)</h3><span class="hint" id="regCount"></span></div>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Customer</th><th>Mobile</th><th class="num">Stamps now</th><th class="num">Paid visits</th><th class="num">Rewards</th><th class="num">Spent</th><th>Last visit</th></tr></thead><tbody id="regRows"></tbody></table></div>
+      </div>
       <div class="box" style="margin-top:16px"><h3>Best-selling products this month</h3><div class="table-wrap"><table class="otable"><thead id="topHead"></thead><tbody id="topRows"></tbody></table></div></div>
 
       <div class="view-head" style="margin-top:26px">
@@ -393,6 +403,38 @@
         <p class="hint">Automatic discounts by time of day, on the website and the POS. Add-ons stay full price, and the discount is rounded to whole pesos. If two promos match an item, the bigger discount wins. For order-ahead, the price follows the pickup time.</p>
         <div id="promoList"></div>
         <button class="btn" type="button" id="savePromos" style="margin-top:12px">Save promos</button>
+      </div>
+      <div class="box loyalty-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>🎟️ Stamp card</h3><label class="switchrow" for="loyOn"><input type="checkbox" class="toggle" id="loyOn"> Stamp card on</label></div>
+        <p class="hint">Customers collect stamps with their mobile number: online at checkout, or the cashier types it at the POS. Stamps count once an order is <b>paid</b>, and come back off by themselves if it's cancelled or voided. With a full card, one item on the card is free (the most expensive one, up to your limit).</p>
+        <div class="row3">
+          <div class="field"><label for="loyName">Card name</label><input id="loyName" maxlength="40" placeholder="Demetria's Stamp Card"></div>
+          <div class="field"><label for="loyNeeded">Stamps for a free item</label><input id="loyNeeded" type="number" min="2" max="50" step="1" placeholder="9"></div>
+          <div class="field"><label for="loyMax">Free item worth up to (₱, optional)</label><input id="loyMax" type="number" min="1" step="1" placeholder="No limit"></div>
+        </div>
+        <div class="promo-row"><span class="lbl">Earn stamps on</span><div class="chips" id="loyCats"></div></div>
+        <p class="hint" style="margin:0">None picked = every drink. One stamp per item (the free one doesn't earn a stamp).</p>
+        <div class="row3">
+          <div class="field"><label for="loyPerDay">Max stamps per day</label><input id="loyPerDay" type="number" min="1" max="50" step="1" placeholder="No limit"></div>
+          <p class="hint" style="grid-column:span 2;align-self:end;margin:0">Per card, per business day (4 AM → 4 AM). <b>1</b> = one stamp a day, however many drinks they buy. Leave empty for no limit.</p>
+        </div>
+        <label class="switchrow" for="loyOnline"><input type="checkbox" class="toggle" id="loyOnline"> Let customers claim the free item online too</label>
+        <p class="hint" style="margin:0">Off (recommended): anyone could type someone else's number, so rewards are claimed at the counter, where the cashier can check.</p>
+        <div class="row-btns"><button class="btn" type="button" id="loySave">Save stamp card</button></div>
+        <h4 class="tiers-h">Add or remove stamps by hand</h4>
+        <div class="row3 loy-adjust">
+          <div class="field"><label for="ladjPhone">Mobile number</label><input id="ladjPhone" inputmode="tel" maxlength="16" placeholder="0917 123 4567"></div>
+          <div class="field"><label for="ladjDelta">Stamps (+ or −)</label><input id="ladjDelta" type="number" min="-50" max="50" step="1" placeholder="+2"></div>
+          <div class="field"><label for="ladjWhy">Reason</label><input id="ladjWhy" maxlength="120" placeholder="e.g. paper card transferred"></div>
+        </div>
+        <div class="row-btns"><button class="btn ghost" type="button" id="ladjSave">Save adjustment</button><span class="hint" id="ladjInfo"></span></div>
+      </div>
+      <div class="box upsell-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>🍪 Cart suggestions</h3><label class="switchrow" for="upOn"><input type="checkbox" class="toggle" id="upOn"> Suggestions on</label></div>
+        <p class="hint">"Add something?" in the customer's cart (one tap) and as hints on the POS ticket. Your suggestions come first; then, if switched on, what customers actually buy together; then a popular pastry with a drink, or a popular drink with food.</p>
+        <label class="switchrow" for="upAuto"><input type="checkbox" class="toggle" id="upAuto"> Also learn from orders (bought together in the last 60 days)</label>
+        <div id="upRules"></div>
+        <div class="row-btns"><button class="btn ghost" type="button" id="upAdd">+ Add a suggestion</button><button class="btn" type="button" id="upSave">Save suggestions</button></div>
       </div>
       <div class="box deals-box" style="margin-top:16px">
         <div class="view-head" style="margin:0"><h3>🎉 Buy 1 Take 1 deals</h3><button class="btn ghost" type="button" id="dealNew">+ New deal</button></div>

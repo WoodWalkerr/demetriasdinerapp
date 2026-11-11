@@ -964,3 +964,50 @@ body.sees-cost .field.cost-col{display:grid}
 .code-form .code-row{min-width:0}
 .code-form .field:has(#cfKind){grid-column:span 2}
 @media (max-width:520px){.code-form .field:has(#cfKind){grid-column:1/-1}}
+
+/* ---------- stamp card ---------- */
+.stamps{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 4px}
+.stamps i{width:24px;height:24px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--matcha) 55%,transparent);display:grid;place-items:center;font-style:normal;font-size:12px;line-height:1}
+.stamps i.on{background:var(--matcha);border-style:solid;border-color:var(--matcha);color:#fff}
+.stamps i.gift{border-color:var(--hojicha);border-style:solid;font-size:13px}
+.stamp-card{margin-top:8px;padding:10px 12px;border-radius:14px;background:color-mix(in srgb,var(--matcha) 8%,var(--card));border:1px solid color-mix(in srgb,var(--matcha) 30%,transparent)}
+.stamp-card p{margin:2px 0 6px;font-size:14px}
+.stamp-card small{color:var(--muted)}
+.pos-stamps{margin:6px 0 10px}
+.pos-stamp-info{display:grid;gap:6px;margin-top:6px;padding:8px 10px;border-radius:12px;background:color-mix(in srgb,var(--matcha) 8%,var(--card));border:1px solid var(--line);font-size:13.5px}
+.pos-stamp-info .stamps{margin:0}
+.pos-stamp-info .stamps i{width:18px;height:18px}
+.loy-adjust{display:grid;grid-template-columns:1fr 120px 2fr;gap:8px}
+@media (max-width:640px){.loy-adjust{grid-template-columns:1fr 1fr}}
+.loyalty-box .row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:640px){.loyalty-box .row3{grid-template-columns:1fr}}
+.loyalty-box{display:grid;gap:10px}
+
+/* ---------- cart suggestions ---------- */
+.cart-suggest{margin:8px 0 12px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px dashed var(--line);display:grid;gap:8px}
+.cart-suggest h4{margin:0;font:500 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.cart-suggest .sug{display:grid;grid-template-columns:48px 1fr auto;gap:10px;align-items:center}
+.sug-art{width:48px;height:48px;border-radius:10px;background:var(--surface);overflow:hidden;display:grid;place-items:center}
+.sug-art img{width:100%;height:100%;object-fit:cover}
+.sug-art svg{height:42px;width:auto}
+.sug-txt{display:grid;min-width:0}
+.sug-txt b{font-size:14.5px}
+.sug-txt small{color:var(--muted);font-size:12.5px}
+.btn.sm{padding:7px 12px;font-size:14px}
+.pos-suggest{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0 10px;font-size:13px;color:var(--muted)}
+.pos-suggest button{border:1px dashed var(--matcha);background:color-mix(in srgb,var(--matcha) 8%,var(--card));color:var(--ink);border-radius:999px;padding:5px 10px;font:600 13px var(--body);cursor:pointer}
+.pos-suggest button small{color:var(--muted);font-weight:500}
+.up-rule .up-pick .deal-pick{max-height:180px}
+.btn.on-dark{border-color:color-mix(in srgb,var(--bg) 60%,transparent);color:var(--bg);background:transparent;margin-left:8px}
+
+/* ---------- install as an app ---------- */
+.install-bar{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));z-index:60;width:min(460px,calc(100% - 24px));transform:translate(-50%,24px);opacity:0;transition:transform .35s cubic-bezier(.2,.9,.25,1.2),opacity .25s;
+  display:grid;grid-template-columns:44px 1fr auto auto;gap:10px;align-items:center;padding:10px 10px 10px 12px;border-radius:18px;background:var(--card);border:1px solid var(--line);box-shadow:0 12px 30px rgb(0 0 0 / .18)}
+.install-bar.show{transform:translate(-50%,0);opacity:1}
+.install-bar img{border-radius:11px}
+.install-bar b{display:block;font-size:15px}
+.install-bar small{display:block;color:var(--muted);font-size:12.5px;line-height:1.3}
+.install-bar .x{width:32px;height:32px;font-size:17px}
+.ios-dlg ol{margin:8px 0 16px;padding-left:20px;display:grid;gap:8px;line-height:1.45}
+.ios-share{display:inline-grid;place-items:center;width:22px;height:22px;border:1.5px solid currentColor;border-radius:6px;font-size:12px;vertical-align:-4px}
+@media (display-mode:standalone){.install-bar{display:none!important}}
