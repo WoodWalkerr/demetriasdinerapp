@@ -12,6 +12,7 @@ import { history, report, exportCsv } from '../lib/staff/reports.js';
 import { settings } from '../lib/staff/settings.js';
 import { dashboard, liquidation, expenses } from '../lib/staff/finance.js';
 import { activity, summary } from '../lib/staff/activity.js';
+import { codes } from '../lib/staff/codes.js';
 
 const ROUTES = {
   login:    [['GET', 'POST'], login],
@@ -36,6 +37,7 @@ const ROUTES = {
   expenses:    [['POST', 'DELETE'], expenses],
   activity:    [['GET'], activity],
   summary:     [['GET', 'POST'], summary],
+  codes:       [['GET', 'POST', 'PUT', 'DELETE'], codes],
 };
 const wrapped = Object.fromEntries(Object.entries(ROUTES).map(([k, [methods, fn]]) => [k, route(methods, async (req, res) => { await ensureSchema(); return fn(req, res); })]));
 
