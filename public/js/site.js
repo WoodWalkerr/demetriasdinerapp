@@ -422,12 +422,13 @@
   // ---------- state ----------
   const STATUS = { new: 'Received', making: 'Being made', ready: 'Ready for pickup', delivering: 'Out for delivery', done: 'Picked up', cancelled: 'Cancelled' };
   const STEP = { new: 1, making: 2, ready: 3, delivering: 3, done: 3, cancelled: 0 };
-  const PAY = { qrph: 'GCash / Maya QR', gcash: 'GCash', paymaya: 'Maya', card: 'Card', counter: 'Pay at counter' };
-  const PAY_ORDER = ['qrph', 'gcash', 'paymaya', 'card', 'counter'];
+  const PAY = { qrph: 'GCash / Maya QR', gcash: 'GCash', paymaya: 'Maya', card: 'Card', counter: 'Pay at counter' }; // 'card' only for old orders
+  const PAY_ORDER = ['qrph', 'gcash', 'paymaya', 'counter'];
   let cart = ls.get('dd-cart2', []);
   let mine = ls.get('dd-orders', []).filter(o => Date.now() - o.at < 12 * 3600e3);
   let busy = false, payPicked = false;
   let pin = ls.get('dd-pin', null); // {lat, lng, km, feeCents}
+  let promo = ls.get('dd-code', null); // applied promo code {code, kind, value, minCents, maxOffCents, label}
   let history = ls.get('dd-history', []); // past orders on this phone, for "Order again" (kept 60 days)
   history = history.filter(h => Date.now() - h.at < 60 * 86400e3);
   const told = {};
@@ -436,6 +437,13 @@
   const subtotal = () => cart.reduce((a, l) => a + unitOf(l) * l.qty, 0);
   const isDelivery = () => $('#ot-delivery').checked && cat.delivery.enabled;
   const deliveryFee = () => (cart.length && isDelivery() && pin?.feeCents != null ? pin.feeCents : 0);
+  // Promo code discount: same rule as the server (lib/promocodes.js): items only, whole pesos.
+  const codeOff = (sub) => {
+    if (!promo || sub < (promo.minCents || 0)) return 0;
+    let off = Math.round((promo.kind === 'pct' ? (sub * promo.value) / 100 : promo.value) / 100) * 100;
+    if (promo.kind === 'pct' && promo.maxOffCents) off = Math.min(off, promo.maxOffCents);
+    return Math.max(0, Math.min(off, sub));
+  };
   const optsLabel = (o) => (o ? [o.sweet != null ? o.sweet + '% sweet' : null, o.ice].filter(Boolean).join(' · ') : '');
 
   // ---------- drawer ----------
@@ -604,9 +612,15 @@
         <div class="stepper"><button type="button" data-q="${i}" data-d="-1" aria-label="Fewer">−</button><span>${l.qty}</span><button type="button" data-q="${i}" data-d="1" aria-label="More">+</button></div>
         ${adds.length ? `<span class="addons">+ ${adds.map(a => `${esc(a.name)} (${pesos(a.price)})`).join(', ')}</span>` : ''}</div>`;
     }).join('') : `<div class="empty">Nothing here yet. Tap <b>Add +</b> on anything from the menu.</div>`;
-    const sub = subtotal(), fee = deliveryFee(), del = isDelivery();
-    $('#sums').hidden = !del || !cart.length; $('#subTotal').textContent = pesos(sub); $('#feeTotal').textContent = pin?.feeCents != null ? pesos(fee) : '—';
-    $('#total').textContent = pesos(sub + fee);
+    const sub = subtotal(), fee = deliveryFee(), del = isDelivery(), disc = codeOff(sub);
+    $('#sums').hidden = (!del && !disc) || !cart.length; $('#subTotal').textContent = pesos(sub); $('#feeTotal').textContent = pin?.feeCents != null ? pesos(fee) : '—';
+    $('#feeLbl').hidden = $('#feeTotal').hidden = !del;
+    $('#discLbl').hidden = $('#discTotal').hidden = !disc; $('#discTotal').textContent = '−' + pesos(disc);
+    $('#discLbl').textContent = promo ? `Promo ${promo.code}` : 'Discount';
+    $('#codeRow').hidden = !!promo; $('#codeOn').hidden = !promo;
+    if (promo) $('#codeOn').innerHTML = `<span><b>${esc(promo.code)}</b> · ${esc(promo.label)}${disc ? ` · <b>−${pesos(disc)}</b>` : cart.length && sub < promo.minCents ? `<br><small>Add ${pesos(promo.minCents - sub)} more to use this code (minimum ${pesos(promo.minCents)}).</small>` : ''}</span><button class="linkbtn" type="button" id="codeRemove">Remove</button>`;
+    const totalNow = sub - disc + fee;
+    $('#total').textContent = pesos(totalNow);
     let why = '';
     if (apiState === 'loading') why = 'Connecting to the order system…';
     else if (apiState === 'down') why = 'Online ordering is unavailable right now. Please order at the counter.';
@@ -622,15 +636,31 @@
     const btn = $('#placeBtn');
     btn.disabled = busy || !cart.length || !!why;
     btn.textContent = busy ? 'Sending…' : !cart.length ? 'Place order'
-      : pm === 'qrph' ? `Continue to pay ${pesos(sub + fee)}` : ['gcash', 'paymaya', 'card'].includes(pm) ? `Pay ${pesos(sub + fee)} with ${PAY[pm]}` : `Place order · ${pesos(sub + fee)}`;
+      : pm === 'qrph' ? `Continue to pay ${pesos(totalNow)}` : ['gcash', 'paymaya', 'card'].includes(pm) ? `Pay ${pesos(totalNow)} with ${PAY[pm]}` : `Place order · ${pesos(totalNow)}`;
     renderAgain();
-    if (!busy && !$('#orderNote').classList.contains('err')) setNote(why || (!cart.length ? '' : pm === 'counter' ? (del ? 'Pay the rider in cash when your order arrives.' : 'Pay with cash or card when you pick up.') : pm === 'qrph' ? "Next, you'll see our GCash QR to scan and pay." : `You'll be taken to ${PAY[pm]} to pay securely through PayMongo.`));
+    if (!busy && !$('#orderNote').classList.contains('err')) setNote(why || (!cart.length ? '' : pm === 'counter' ? (del ? 'Pay the rider in cash when your order arrives.' : 'Pay with cash or GCash at the counter when you pick up.') : pm === 'qrph' ? "Next, you'll see our GCash QR to scan and pay." : `You'll be taken to ${PAY[pm]} to pay securely through PayMongo.`));
   }
   $('#lines').addEventListener('click', e => {
     const b = e.target.closest('[data-q]'); if (!b) return;
     const l = cart[+b.dataset.q]; l.qty += +b.dataset.d; if (l.qty <= 0) cart.splice(+b.dataset.q, 1);
     setNote(''); renderCart();
   });
+
+  // ---------- promo code ----------
+  async function applyCode() {
+    const c = $('#o-code').value.trim().toUpperCase().replace(/\s+/g, '');
+    if (!c) { setNote('Type your promo code first.', true); $('#o-code').focus(); return; }
+    $('#codeApply').disabled = true;
+    try {
+      promo = await api('/api/orders?promo=' + encodeURIComponent(c));
+      ls.set('dd-code', promo); $('#o-code').value = '';
+      setNote(''); toast(`Promo ${promo.code} applied: ${promo.label}`);
+    } catch (err) { setNote(err.message || "Couldn't check that code. Try again.", true); }
+    $('#codeApply').disabled = false; renderCart();
+  }
+  $('#codeApply').onclick = applyCode;
+  $('#o-code').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(); } });
+  $('#codeOn').addEventListener('click', e => { if (e.target.closest('#codeRemove')) { promo = null; ls.set('dd-code', null); setNote(''); renderCart(); } });
 
   // ---------- order again (past orders are remembered on this phone) ----------
   const lineName = (l) => `${byId[l.id]?.name || ''}${l.qty > 1 ? ' × ' + l.qty : ''}`;
@@ -660,68 +690,114 @@
 
   // ---------- my orders: status + messages ----------
   const openChats = new Set();
+  // Each order keeps its own box. Live updates (every 4 s) only change the parts that changed, and never
+  // replace the message box, so the keyboard stays open while the customer types.
+  const setHtml = (el, html) => { if (el._h !== html) { el.innerHTML = html; el._h = html; return true; } return false; };
+  function orderView(o) {
+    const ps = o.paymentStatus || 'unpaid', qr = o.paymentMethod === 'qrph';
+    const online = ['gcash', 'paymaya', 'card'].includes(o.paymentMethod);
+    let st = o.status || 'new', label = STATUS[st], pill = st;
+    if (o.orderType === 'delivery' && st === 'done') label = 'Delivered';
+    if (o.orderType === 'delivery' && st === 'ready') label = 'Ready · rider on the way soon';
+    if (o.scheduledFor && st === 'new') label = `Scheduled · ${whenWord(o.scheduledFor)}`;
+    if (qr && ps === 'awaiting_proof') { label = 'Waiting for payment'; pill = 'pending'; }
+    if (qr && ps === 'submitted') { label = 'Checking payment'; pill = 'pending'; }
+    if (online && ps === 'pending') { label = 'Waiting for payment'; pill = 'pending'; }
+    if (['rejected', 'expired', 'failed'].includes(ps)) { st = 'cancelled'; label = ps === 'rejected' ? 'Payment not found' : 'Payment not completed'; pill = 'cancelled'; }
+    if (['voided', 'refunded'].includes(ps)) label = ps === 'refunded' ? 'Cancelled · refunded' : 'Cancelled';
+    const n = (online && ps === 'pending') || (qr && ps !== 'paid') ? 0 : STEP[st];
+    const payLine = qr ? `GCash / Maya QR · ${ps === 'paid' ? 'Paid' : ps === 'submitted' ? `Ref ${o.reference || ''} sent` : 'Not paid yet'}`
+      : online ? `${PAY[o.paymentMethod]} · ${ps === 'paid' ? 'Paid' : ps === 'refunded' ? 'Refunded' : 'Not paid yet'}`
+      : o.orderType === 'delivery' ? 'Cash on delivery' : 'Pay at counter';
+    const main = `<div class="ord-top"><b>#${esc(o.code)}</b><span class="pill ${pill}">${label}</span></div>
+      ${st === 'cancelled' ? '' : `<div class="track"><i class="${n >= 1 ? 'on' : ''}"></i><i class="${n >= 2 ? 'on' : ''}"></i><i class="${n >= 3 ? 'on' : ''}"></i></div>`}
+      <small>${(o.items || []).map(i => `${i.qty} × ${esc(i.name)}${(i.addons || []).length ? ' (+' + i.addons.map(a => esc(a.name)).join(', ') + ')' : ''}`).join(', ')} · ${pesos(o.totalCents || 0)}${o.discountCents ? ` (${o.promoCode ? esc(o.promoCode) + ' ' : ''}−${pesos(o.discountCents)})` : ''}${o.deliveryFeeCents ? ` incl. ${pesos(o.deliveryFeeCents)} delivery` : ''}<br>${esc(payLine)} · ${esc(o.pickupLabel || '')} · ordered ${fmtTime(o.at)}</small>
+      ${st === 'done' && history.some(h => h.code === o.code) ? `<button class="linkbtn again-btn" type="button" data-again="${esc(o.code)}">↻ Order again</button>` : ''}
+      ${online && ps === 'pending' && o.checkoutUrl ? `<a class="btn" href="${esc(o.checkoutUrl)}">Finish paying with ${PAY[o.paymentMethod]}</a>` : ''}
+      ${qr && ['awaiting_proof', 'rejected'].includes(ps) && o.qr ? `<button class="btn" type="button" data-payqr="${esc(o.id)}">${ps === 'rejected' ? 'Send the correct reference' : 'Show QR and pay'}</button>` : ''}`;
+    const canChat = st !== 'cancelled' && !(st === 'done' && Date.now() - o.at > 3 * 3600e3);
+    return { st, main, canChat };
+  }
   function renderMine() {
     ls.set('dd-orders', mine.map(o => ({ ...o, qr: undefined })));
     const box = $('#mine'); box.hidden = !mine.length;
-    const keepFocus = document.activeElement?.dataset?.chatInput;
-    const drafts = Object.fromEntries([...box.querySelectorAll('[data-chat-input]')].map(i => [i.dataset.chatInput, i.value]));
-    box.innerHTML = '<h3>Your orders</h3>' + mine.map(o => {
-      const ps = o.paymentStatus || 'unpaid', qr = o.paymentMethod === 'qrph';
-      const online = ['gcash', 'paymaya', 'card'].includes(o.paymentMethod);
-      let st = o.status || 'new', label = STATUS[st], pill = st;
-      if (o.orderType === 'delivery' && st === 'done') label = 'Delivered';
-      if (o.orderType === 'delivery' && st === 'ready') label = 'Ready · rider on the way soon';
-      if (o.scheduledFor && st === 'new') label = `Scheduled · ${whenWord(o.scheduledFor)}`;
-      if (qr && ps === 'awaiting_proof') { label = 'Waiting for payment'; pill = 'pending'; }
-      if (qr && ps === 'submitted') { label = 'Checking payment'; pill = 'pending'; }
-      if (online && ps === 'pending') { label = 'Waiting for payment'; pill = 'pending'; }
-      if (['rejected', 'expired', 'failed'].includes(ps)) { st = 'cancelled'; label = ps === 'rejected' ? 'Payment not found' : 'Payment not completed'; pill = 'cancelled'; }
-      if (['voided', 'refunded'].includes(ps)) label = ps === 'refunded' ? 'Cancelled · refunded' : 'Cancelled';
-      const n = (online && ps === 'pending') || (qr && ps !== 'paid') ? 0 : STEP[st];
-      const payLine = qr ? `GCash / Maya QR · ${ps === 'paid' ? 'Paid' : ps === 'submitted' ? `Ref ${o.reference || ''} sent` : 'Not paid yet'}`
-        : online ? `${PAY[o.paymentMethod]} · ${ps === 'paid' ? 'Paid' : ps === 'refunded' ? 'Refunded' : 'Not paid yet'}`
-        : o.orderType === 'delivery' ? 'Cash on delivery' : 'Pay at counter';
-      const msgs = o.messages || [];
-      const unread = msgs.filter(m => m.from === 'staff' && new Date(m.at) > new Date(o.seenAt || 0)).length;
+    if (!box.querySelector(':scope > h3')) box.innerHTML = '<h3>Your orders</h3>';
+    const ids = new Set(mine.map(o => o.id));
+    box.querySelectorAll(':scope > [data-ord]').forEach(el => { if (!ids.has(el.dataset.ord)) el.remove(); });
+    let prev = box.querySelector(':scope > h3');
+    for (const o of mine) {
+      let el = [...box.children].find(x => x.dataset.ord === o.id);
+      if (!el) {
+        el = document.createElement('div'); el.dataset.ord = o.id;
+        const quick = o.orderType === 'delivery' ? ["Where's my order?", "I'm outside / at the gate", 'Thank you!'] : ['Is my order ready?', "I'm on my way", "I'm here"];
+        el.innerHTML = `<div class="ord-main"></div>
+          <div class="chat" hidden>
+            <button class="chat-toggle" type="button" data-chat="${esc(o.id)}"></button>
+            <div class="chat-body" hidden>
+              <div class="chat-log" aria-live="polite"></div>
+              <form class="chat-row" data-chat-form="${esc(o.id)}">
+                <textarea data-chat-input="${esc(o.id)}" rows="1" maxlength="300" enterkeyhint="send" placeholder="Type your message…" aria-label="Your message to the cashier"></textarea>
+                <button type="submit">Send</button>
+              </form>
+              <div class="chat-quick"><span>Quick:</span>${quick.map(q => `<button type="button" data-quick="${esc(o.id)}">${esc(q)}</button>`).join('')}</div>
+            </div>
+          </div>`;
+      }
+      if (el.previousElementSibling !== prev) prev.after(el);
+      prev = el;
+      const v = orderView(o), msgs = o.messages || [];
+      el.className = `ord ${v.st}`;
+      setHtml(el.querySelector('.ord-main'), v.main);
       const chatOpen = openChats.has(o.id);
-      const canChat = st !== 'cancelled' && !(st === 'done' && Date.now() - o.at > 3 * 3600e3);
-      return `<div class="ord ${st}"><div class="ord-top"><b>#${esc(o.code)}</b><span class="pill ${pill}">${label}</span></div>
-        ${st === 'cancelled' ? '' : `<div class="track"><i class="${n >= 1 ? 'on' : ''}"></i><i class="${n >= 2 ? 'on' : ''}"></i><i class="${n >= 3 ? 'on' : ''}"></i></div>`}
-        <small>${(o.items || []).map(i => `${i.qty} × ${esc(i.name)}${(i.addons || []).length ? ' (+' + i.addons.map(a => esc(a.name)).join(', ') + ')' : ''}`).join(', ')} · ${pesos(o.totalCents || 0)}${o.deliveryFeeCents ? ` incl. ${pesos(o.deliveryFeeCents)} delivery` : ''}<br>${esc(payLine)} · ${esc(o.pickupLabel || '')} · ordered ${fmtTime(o.at)}</small>
-        ${st === 'done' && history.some(h => h.code === o.code) ? `<button class="linkbtn again-btn" type="button" data-again="${esc(o.code)}">↻ Order again</button>` : ''}
-        ${online && ps === 'pending' && o.checkoutUrl ? `<a class="btn" href="${esc(o.checkoutUrl)}">Finish paying with ${PAY[o.paymentMethod]}</a>` : ''}
-        ${qr && ['awaiting_proof', 'rejected'].includes(ps) && o.qr ? `<button class="btn" type="button" data-payqr="${esc(o.id)}">${ps === 'rejected' ? 'Send the correct reference' : 'Show QR and pay'}</button>` : ''}
-        ${canChat || msgs.length ? `<div class="chat">
-          <button class="chat-toggle" type="button" data-chat="${esc(o.id)}">${chatOpen ? 'Hide messages' : 'Message the cashier'}${unread && !chatOpen ? ` <b>${unread} new</b>` : ''}</button>
-          ${chatOpen ? `<div class="chat-log">${msgs.map(m => `<div class="bubble-msg ${m.from === 'customer' ? 'me' : 'them'}">${esc(m.body)}<small>${m.from === 'customer' ? 'You' : "Demetria's"} · ${fmtTime(m.at)}</small></div>`).join('') || '<p class="hint-sm">Ask about your order. A cashier replies here.</p>'}</div>
-            ${canChat ? `<div class="chat-quick">${(o.orderType === 'delivery' ? ["Where's my order?", 'Please hurry, thank you!', "I'm outside / at the gate"] : ["Is my order ready?", "I'm on my way", "I'm here"]).map(q => `<button type="button" data-quick="${esc(o.id)}">${esc(q)}</button>`).join('')}</div>
-            <form class="chat-row" data-chat-form="${esc(o.id)}"><input data-chat-input="${esc(o.id)}" maxlength="300" placeholder="Type a message…" aria-label="Message"><button type="submit">Send</button></form>` : ''}` : ''}
-        </div>` : ''}</div>`;
-    }).join('');
-    for (const [id, v] of Object.entries(drafts)) { const i = box.querySelector(`[data-chat-input="${CSS.escape(id)}"]`); if (i) i.value = v; }
-    if (keepFocus) box.querySelector(`[data-chat-input="${CSS.escape(keepFocus)}"]`)?.focus();
-    box.querySelectorAll('.chat-log').forEach(l => { l.scrollTop = l.scrollHeight; });
+      const unread = msgs.filter(m => m.from === 'staff' && new Date(m.at) > new Date(o.seenAt || 0)).length;
+      el.querySelector('.chat').hidden = !(v.canChat || msgs.length);
+      setHtml(el.querySelector('.chat-toggle'), `${chatOpen ? 'Hide messages' : msgs.length ? `💬 Messages (${msgs.length})` : '💬 Message the cashier'}${unread && !chatOpen ? ` <b>${unread} new</b>` : ''}`);
+      el.querySelector('.chat-body').hidden = !chatOpen;
+      el.querySelector('.chat-row').hidden = !v.canChat;
+      el.querySelector('.chat-quick').hidden = !v.canChat;
+      const log = el.querySelector('.chat-log');
+      if (setHtml(log, msgs.map(m => `<div class="bubble-msg ${m.from === 'customer' ? 'me' : 'them'}">${esc(m.body)}<small>${m.from === 'customer' ? 'You' : "Demetria's"} · ${fmtTime(m.at)}</small></div>`).join('')
+        || '<p class="hint-sm">Write to the cashier about your order, like changes, directions or questions. They reply here.</p>')) log.scrollTop = log.scrollHeight;
+    }
     const ready = mine.find(o => (o.status === 'ready' || o.status === 'delivering') && !told[o.id + o.status]);
     if (ready) { told[ready.id + ready.status] = 1; if (ready.notify) toast(ready.status === 'delivering' ? `Order #${ready.code} is on the way!` : `Order #${ready.code} is ready for pickup!`); }
   }
-  async function sendChat(id, text) {
-    const o = mine.find(x => x.id === id); if (!o || !text.trim()) return;
+  async function sendChat(id, text, input) {
+    const o = mine.find(x => x.id === id); if (!o || !text.trim()) return false;
     try {
-      const s = await api(`/api/orders/${encodeURIComponent(o.id)}`, { method: 'POST', body: JSON.stringify({ token: o.token, action: 'message', body: text }) });
+      const s = await api(`/api/orders/${encodeURIComponent(o.id)}`, { method: 'POST', body: JSON.stringify({ token: o.token, action: 'message', body: text.trim() }) });
       Object.assign(o, { messages: s.messages, seenAt: new Date().toISOString() });
-      renderMine();
-    } catch (err) { toast(err.message); }
+      renderMine(); return true;
+    } catch (err) { toast(err.message); if (input && !input.value) input.value = text; return false; }
   }
   $('#mine').addEventListener('click', e => {
     const t = e.target.closest('[data-chat]');
-    if (t) { const id = t.dataset.chat; openChats.has(id) ? openChats.delete(id) : openChats.add(id); const o = mine.find(x => x.id === id); if (o) o.seenAt = new Date().toISOString(); renderMine(); return; }
+    if (t) {
+      const id = t.dataset.chat, opening = !openChats.has(id);
+      opening ? openChats.add(id) : openChats.delete(id);
+      const o = mine.find(x => x.id === id); if (o) o.seenAt = new Date().toISOString();
+      renderMine();
+      if (opening) t.closest('[data-ord]')?.querySelector('[data-chat-input]:not([hidden])')?.focus(); // opens the keyboard on phones
+      return;
+    }
     const q = e.target.closest('[data-quick]'); if (q) return sendChat(q.dataset.quick, q.textContent);
     const p = e.target.closest('[data-payqr]'); if (p) openQr(mine.find(o => o.id === p.dataset.payqr));
   });
-  $('#mine').addEventListener('submit', e => {
+  $('#mine').addEventListener('submit', async e => {
     const f = e.target.closest('[data-chat-form]'); if (!f) return;
-    e.preventDefault(); const i = f.querySelector('input'); const v = i.value; i.value = ''; sendChat(f.dataset.chatForm, v);
+    e.preventDefault();
+    const i = f.querySelector('textarea'), btn = f.querySelector('button'), v = i.value;
+    if (!v.trim()) { i.focus(); return; }
+    i.value = ''; i.style.height = ''; btn.disabled = true; btn.textContent = 'Sending…';
+    await sendChat(f.dataset.chatForm, v, i);
+    btn.disabled = false; btn.textContent = 'Send';
   });
+  // Enter sends, Shift+Enter makes a new line; the box grows as you type.
+  $('#mine').addEventListener('keydown', e => {
+    const i = e.target.closest('[data-chat-input]'); if (!i || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+    e.preventDefault(); i.form.requestSubmit();
+  });
+  $('#mine').addEventListener('input', e => { const i = e.target.closest('[data-chat-input]'); if (i) { i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 120) + 'px'; } });
 
   // Live updates: every 4 s while you have an active order and the page is visible.
   const isLive = (o) => !['done', 'cancelled'].includes(o.status) && !['expired', 'failed'].includes(o.paymentStatus) || o.paymentStatus === 'rejected'
@@ -735,10 +811,11 @@
         const s = await api(`/api/orders/${encodeURIComponent(o.id)}?token=${encodeURIComponent(o.token)}`);
         const before = (o.messages || []).length;
         Object.assign(o, { code: s.code, status: s.status, items: s.items, totalCents: s.totalCents, deliveryFeeCents: s.deliveryFeeCents, orderType: s.orderType,
+          discountCents: s.discountCents, promoCode: s.promoCode, scheduledFor: s.scheduledFor,
           pickupLabel: s.pickupLabel, paymentMethod: s.paymentMethod, paymentStatus: s.paymentStatus, checkoutUrl: s.checkoutUrl, reference: s.reference,
           qr: s.qr || o.qr, messages: s.messages, notify: true });
         const newStaff = s.messages.slice(before).filter(m => m.from === 'staff');
-        if (newStaff.length && before) toast(`Demetria's: ${newStaff.at(-1).body}`);
+        if (newStaff.length && before) { toast(`Demetria's: ${newStaff.at(-1).body}`); openChats.add(o.id); }
         if (openChats.has(o.id)) o.seenAt = new Date().toISOString();
         checkBuild(s.build);
       } catch (e) { if (e.status === 404) mine = mine.filter(x => x !== o); }
@@ -764,17 +841,20 @@
         orderType: del ? 'delivery' : 'pickup', pickupMinutes: +$('#o-pickup').value, scheduleAt: whenAt()?.toISOString(),
         delivery: del ? { lat: pin.lat, lng: pin.lng, address: contact.address, landmark: contact.landmark, phone: contact.phone } : undefined,
         items: cart.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons })),
+        promoCode: promo && codeOff(subtotal()) ? promo.code : undefined,
       }) });
       mine = [{ ...o, at: Date.now() }, ...mine].slice(0, 5);
       history = [{ at: Date.now(), code: o.code, totalCents: o.totalCents, lines: cart.map(({ key, id, qty, opts, addons }) => ({ key, id, qty, opts, addons })) }, ...history].slice(0, 6);
       ls.set('dd-history', history);
       cart = []; $('#o-note').value = ''; $('#o-when').value = 'now';
+      promo = null; ls.set('dd-code', null);
       busy = false; renderCart(); renderMine();
       if (o.checkoutUrl) { location.href = o.checkoutUrl; return; }
       if (o.qr) { openQr(mine[0]); return; }
       setNote(`Order #${o.code} sent · ${pesos(o.totalCents)}. We'll start on it shortly.`);
       toast(`Order #${o.code} placed`);
     } catch (err) {
+      if (promo && err.message && err.message.includes(promo.code)) { promo = null; ls.set('dd-code', null); }
       busy = false; setNote(err.message || "Couldn't send your order. Check your connection and try again.", true); renderCart();
       if (err.status === 409) loadMenu();
     }
@@ -858,7 +938,7 @@
     if (!id || !t) return;
     if (!mine.find(o => o.id === id)) mine.unshift({ id, token: t, code: '…', at: Date.now(), paymentStatus: 'pending' });
     const cancelled = u.searchParams.has('cancelled');
-    history.replaceState(null, '', location.pathname + '#menu');
+    window.history.replaceState(null, '', location.pathname + '#menu'); // window.history: "history" above is our saved-orders list
     setTimeout(() => { openDrawer(); setNote(cancelled ? "Payment wasn't completed, so your order hasn't been sent. You can finish paying below." : 'Thanks! Confirming your payment…', cancelled); }, 300);
   })();
 

@@ -102,8 +102,14 @@
         </div>
         <div class="row2">
           <div class="field"><label for="posDisc">Discount</label>
-            <select id="posDisc"><option value="">None</option><option value="senior">Senior citizen 20%</option><option value="pwd">PWD 20%</option><option value="staff">Staff 10%</option></select></div>
+            <select id="posDisc"><option value="">None</option><option value="senior">Senior citizen 20%</option><option value="pwd">PWD 20%</option><option value="staff">Staff 10%</option><option value="code">Promo code…</option><option value="custom" data-perm-opt="discounts">Custom discount…</option></select></div>
           <div class="field" id="posDiscIdF" hidden><label for="posDiscId">ID number</label><input id="posDiscId" maxlength="40"></div>
+          <div class="field" id="posCodeF" hidden><label for="posCode">Promo code</label><div class="code-row"><input id="posCode" maxlength="20" autocomplete="off" placeholder="BDAY20"><button class="btn ghost" type="button" id="posCodeCheck">Check</button></div></div>
+        </div>
+        <div class="row3 pos-custom" id="posCustomF" hidden>
+          <div class="field"><label for="posCustKind">Type</label><select id="posCustKind"><option value="pct">% off</option><option value="fixed">₱ off</option></select></div>
+          <div class="field"><label for="posCustVal">Amount</label><input id="posCustVal" type="number" inputmode="decimal" min="1" step="1" placeholder="10"></div>
+          <div class="field"><label for="posCustWhy">Reason</label><input id="posCustWhy" maxlength="80" placeholder="e.g. regular customer"></div>
         </div>
         <dl class="pt-sum" id="posSum"></dl>
         <div id="posPay"></div>
@@ -125,7 +131,7 @@
         <div class="field"><label for="hstatus">Status</label><select id="hstatus"><option value="any">Any</option><option value="open">Open</option><option value="done">Done</option><option value="cancelled">Cancelled</option></select></div>
         <div class="field"><label for="hpay">Payment</label>
           <select id="hpay"><option value="any">Any</option><option value="paid">Paid</option><option value="unpaid">Unpaid (counter)</option><option value="submitted">QR ref to check</option><option value="awaiting_proof">QR not paid yet</option><option value="rejected">QR not received</option><option value="voided">Voided</option><option value="refunded">Refunded</option><option value="expired">Expired</option>
-            <option disabled>──────</option><option value="cash">Cash</option><option value="qrph">GCash/Maya QR</option><option value="gcash">GCash</option><option value="paymaya">Maya</option><option value="card">Card</option><option value="split">Split</option><option value="counter">Counter</option></select></div>
+            <option disabled>──────</option><option value="cash">Cash</option><option value="qrph">GCash/Maya QR</option><option value="gcash">GCash</option><option value="paymaya">Maya</option><option value="split">Split</option><option value="counter">Counter</option></select></div>
         <div class="field"><label for="hfrom">From</label><input id="hfrom" type="date"></div>
         <div class="field"><label for="hto">To</label><input id="hto" type="date"></div>
         <button class="btn ghost" type="button" id="hclear">Clear</button>
@@ -336,7 +342,7 @@
           <p class="hint">Switch off when you're closing early or too busy.</p>
           <h3 style="margin-top:18px">Payment methods (online)</h3>
           <label class="switchrow" for="payCounterToggle"><input type="checkbox" class="toggle" id="payCounterToggle" checked> Pay at counter / cash on delivery</label>
-          <label class="switchrow" for="payOnlineToggle" style="margin-top:10px"><input type="checkbox" class="toggle" id="payOnlineToggle" checked> Card (and GCash/Maya if the QR is off) via PayMongo</label>
+          <label class="switchrow" for="payOnlineToggle" style="margin-top:10px"><input type="checkbox" class="toggle" id="payOnlineToggle" checked> GCash / Maya via PayMongo (only used when your QR is off)</label>
         </div>
         <div class="box qr-box">
           <h3>GCash / Maya QR (your own account)</h3>
@@ -374,6 +380,23 @@
         <p class="hint">Automatic discounts by time of day, on the website and the POS. Add-ons stay full price, and the discount is rounded to whole pesos. If two promos match an item, the bigger discount wins. For order-ahead, the price follows the pickup time.</p>
         <div id="promoList"></div>
         <button class="btn" type="button" id="savePromos" style="margin-top:12px">Save promos</button>
+      </div>
+      <div class="box codes-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>Promo codes</h3></div>
+        <p class="hint">Codes customers type in the cart, or cashiers enter at the POS (Discount → Promo code). The discount is on the items (not the delivery fee), rounded to whole pesos, one code per order. A cancelled order gives its use back.</p>
+        <form class="code-form" id="codeForm" novalidate>
+          <div class="field"><label for="cfCode">Code</label><div class="code-row"><input id="cfCode" maxlength="20" placeholder="BDAY20" autocomplete="off"><button class="btn ghost" type="button" id="cfGen" title="Make a random code">🎲</button></div></div>
+          <div class="field"><label for="cfKind">Discount</label><div class="code-row"><select id="cfKind"><option value="pct">% off</option><option value="fixed">₱ off</option></select><input id="cfValue" type="number" min="1" step="1" placeholder="20" aria-label="Amount"></div></div>
+          <div class="field" id="cfMaxF"><label for="cfMax">Max discount (₱, optional)</label><input id="cfMax" type="number" min="1" step="1" placeholder="No limit"></div>
+          <div class="field"><label for="cfMin">Minimum order (₱)</label><input id="cfMin" type="number" min="0" step="1" placeholder="0"></div>
+          <div class="field"><label for="cfStart">Starts (optional)</label><input id="cfStart" type="date"></div>
+          <div class="field"><label for="cfEnd">Ends (optional)</label><input id="cfEnd" type="date"></div>
+          <div class="field"><label for="cfUses">Max uses (optional)</label><input id="cfUses" type="number" min="1" step="1" placeholder="Unlimited"></div>
+          <div class="field"><label for="cfChannel">Works</label><select id="cfChannel"><option value="both">Online &amp; in store</option><option value="online">Online only</option><option value="pos">In store (POS) only</option></select></div>
+          <div class="field grow"><label for="cfNote">Note for staff (optional)</label><input id="cfNote" maxlength="120" placeholder="e.g. Facebook giveaway"></div>
+          <button class="btn" type="submit">Create code</button>
+        </form>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Code</th><th>Discount</th><th>Rules</th><th class="num">Used</th><th class="num">Given</th><th>Active</th><th></th></tr></thead><tbody id="codeRows"></tbody></table></div>
       </div>
       <div class="box summary-box" style="margin-top:16px">
         <div class="view-head" style="margin:0"><h3>Nightly summary email</h3><label class="switchrow" for="sumToggle"><input type="checkbox" class="toggle" id="sumToggle"> Email me a summary every night</label></div>
@@ -421,7 +444,7 @@
           <option value="">Everything</option><option value="price">Price &amp; cost changes</option><option value="product">Products, add-ons, photos</option>
           <option value="order">Voids, refunds, cancels, discounts, payments</option><option value="cash">Shifts &amp; cash in/out</option>
           <option value="expense">Expenses</option><option value="stock">Stock</option><option value="settings">Settings, hours, promos</option>
-          <option value="users">Staff accounts</option><option value="login">Sign-ins</option></select></div>
+          <option value="users">Staff accounts</option><option value="codes">Promo codes</option><option value="login">Sign-ins</option></select></div>
         <div class="field"><label for="acUser">Who</label><select id="acUser"><option value="">Everyone</option></select></div>
         <div class="field"><label for="acFrom">From</label><input id="acFrom" type="date"></div>
         <div class="field"><label for="acTo">To</label><input id="acTo" type="date"></div>

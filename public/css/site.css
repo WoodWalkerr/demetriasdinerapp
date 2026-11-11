@@ -828,3 +828,25 @@ body.sees-cost .field.cost-col{display:grid}
 .special-list div{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:10px 12px;border-radius:12px;background:var(--surface)}
 .special-list small{grid-column:1/-1;color:var(--muted)}
 .special-list span{font-family:var(--mono);font-size:13.5px}
+/* v5: customer chat with a real message box, promo codes */
+.chat-row textarea{flex:1;min-width:0;font:400 16px/1.35 var(--body);color:var(--ink);background:var(--card);border:1.5px solid var(--line);border-radius:18px;padding:9px 14px;resize:none;max-height:120px}
+.chat-row textarea:focus{outline:none;border-color:var(--matcha)}
+.chat-row{align-items:flex-end}
+.chat-row button{min-height:42px}
+.chat-row button:disabled{opacity:.6}
+.chat-body{display:grid;gap:8px}
+.chat-quick{align-items:center}
+.chat-quick span{font:500 11px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.chat-quick button{padding:6px 9px;font-size:12px}
+.code-row{display:flex;gap:8px}
+.code-row input{flex:1;min-width:0;text-transform:uppercase;letter-spacing:.06em}
+.code-row .btn{padding:10px 16px}
+.code-on{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:12px;border:1.5px dashed var(--matcha);background:color-mix(in srgb,var(--matcha) 8%,var(--card));font-size:14px}
+.code-on small{color:var(--muted)}
+.row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:520px){.row3{grid-template-columns:1fr 1fr}.row3 .field:last-child{grid-column:1/-1}}
+.code-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;align-items:end;margin:12px 0 16px}
+.code-form .grow{grid-column:span 2}
+.code-form .code-row select{flex:0 0 auto;width:auto}
+@media (max-width:520px){.code-form .grow{grid-column:1/-1}}
+.muted-row td{opacity:.55}
