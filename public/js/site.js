@@ -753,6 +753,12 @@
   // the next one appears 2 seconds later, and so on. The banner above the menu reopens them any time.
   const ppDlg = $('#promoDlg');
   let ppList = [], ppIdx = 0, ppQueue = [], ppAuto = false, ppStarted = false, ppTimer = null;
+  const ppOffered = new Set(); // pop-ups already queued this visit
+  // Codes with hours ("2 PM – 5 PM") only pop up / show in the bar during those hours (café time).
+  const codeNow = (c, t = new Date()) => { if (!c.startTime || !c.endTime) return true; const m = clock(t).min, s2 = hm(c.startTime), e2 = hm(c.endTime); return s2 < e2 ? m >= s2 && m < e2 : m >= s2 || m < e2; };
+  const t12c = (t) => { const h = +t.slice(0, 2), m = t.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : ':' + m} ${h < 12 ? 'AM' : 'PM'}`; };
+  // Every minute: a code whose hours just started pops up now (no reload needed); one that ended leaves the bar.
+  setInterval(() => { if (!cat.featured) return; renderPromoChip(); if (!ppAuto && !$('#promoDlg').open) { ppStarted = false; maybeAutoPopup(); } }, 60000);
   const ppSeen = () => ls.get('dd-popup-seen', {});
   const ppMark = (key) => { const s2 = ppSeen(); s2[key] = Date.now(); ls.set('dd-popup-seen', s2); };
   const niceEnd = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-PH', { month: 'long', day: 'numeric', timeZone: 'UTC' });
@@ -761,7 +767,7 @@
   function ppItems() {
     const deals = (cat.deals || []).filter(d => d.popup && dealOn(d) && d.productIds.some(id => byId[id] && byId[id].price != null && !byId[id].soldOut))
       .map(d => ({ type: 'deal', key: 'deal:' + d.id, d }));
-    const codes = (cat.featured || []).map(c => ({ type: 'code', key: c.code, c }));
+    const codes = (cat.featured || []).filter(c => codeNow(c)).map(c => ({ type: 'code', key: c.code, c }));
     return [...deals, ...codes];
   }
   function drawPopup() {
@@ -785,7 +791,7 @@
       $('#ppTitle').textContent = c.title || (c.kind === 'bogo' ? `${c.label}!` : `Get ${c.label} today!`);
       $('#ppText').textContent = c.text; $('#ppText').hidden = !c.text;
       $('#ppCode').textContent = c.code; $('#ppLabel').textContent = c.label;
-      $('#ppRules').textContent = [c.minCents ? `Minimum order ${pesos(c.minCents)}` : '', c.endsOn ? `Until ${niceEnd(c.endsOn)}` : '',
+      $('#ppRules').textContent = [c.minCents ? `Minimum order ${pesos(c.minCents)}` : '', c.startTime ? `${t12c(c.startTime)} – ${t12c(c.endTime)} only` : '', c.endsOn ? `Until ${niceEnd(c.endsOn)}` : '',
         c.channel === 'both' ? 'Online, or show this code at the counter' : 'For online orders'].filter(Boolean).join(' · ');
       const using = promo?.code === c.code;
       $('#ppUse').textContent = using ? '✓ Applied to your order' : 'Use this code'; $('#ppUse').disabled = using;
@@ -847,7 +853,7 @@
   function renderPromoChip() {
     const box = $('#statusBar');
     box.querySelectorAll('.sb.code').forEach(x => x.remove());
-    const list = cat.deals ? ppItems() : (cat.featured || []).map(c => ({ type: 'code', key: c.code, c }));
+    const list = cat.deals ? ppItems() : (cat.featured || []).filter(c => codeNow(c)).map(c => ({ type: 'code', key: c.code, c }));
     if (!list.length) { if (!box.children.length) box.hidden = true; return; }
     const applied = list.find(x => x.type === 'code' && x.c.code === promo?.code);
     const x = applied || list[0];
@@ -868,9 +874,10 @@
     renderPromoChip();
     if (ppStarted) return;
     // Only one code works per order, so once a code is applied, other codes don't pop up (deals still do).
-    const fresh = ppItems().filter(x => !ppSeen()[x.key] && !(x.type === 'code' && promo)).map(x => x.key);
+    const fresh = ppItems().filter(x => !ppSeen()[x.key] && !ppOffered.has(x.key) && !(x.type === 'code' && promo)).map(x => x.key);
     if (!fresh.length) return;
-    ppStarted = true; ppQueue = fresh.slice(1);
+    fresh.forEach(k => ppOffered.add(k));
+    ppStarted = true; ppAuto = true; ppQueue = fresh.slice(1); // ppAuto: busy, so the every-minute check waits
     clearTimeout(ppTimer);
     ppTimer = setTimeout(function tryOpen() {
       if (document.querySelector('dialog[open]') || drawer.classList.contains('open') || document.hidden) { ppTimer = setTimeout(tryOpen, 4000); return; }
@@ -1313,6 +1320,90 @@
 
   // ---------- load menu; stay up to date without reloading ----------
   let stampLooked = false;
+  // ---------- newsletter sign-up pop-up (Staff → Settings → Newsletter) ----------
+  // Shows once after a short visit (never over the cart or another window); "No thanks" hides it for 14 days.
+  // Also opens from the footer and "My stamps". Signed-up people never see it again on this phone.
+  const news = { cfg: null, timer: 0, code: null };
+  const newsSeen = () => ls.get('dd-news', '') === 'yes' || Date.now() - (ls.get('dd-news-later', 0) || 0) < 14 * 86400e3;
+  function applyNews() {
+    const c = cat.newsletter; news.cfg = c?.enabled ? c : null;
+    document.querySelectorAll('.news-open').forEach(b => { b.hidden = !news.cfg || ls.get('dd-news', '') === 'yes'; });
+    if (!news.cfg) return;
+    $('#newsTitle').textContent = c.title; $('#newsText').textContent = c.text; $('#newsGo').textContent = c.button; $('#newsGift').hidden = !c.gift;
+    if (!news.timer && !newsSeen()) news.timer = setTimeout(autoNews, (c.delay || 25) * 1000);
+  }
+  function autoNews() {
+    if (!news.cfg || newsSeen()) return;
+    if (document.querySelector('dialog[open]') || drawer.classList.contains('open') || document.getElementById('splash')) { news.timer = setTimeout(autoNews, 6000); return; }
+    openNews('popup');
+  }
+  function openNews(source) {
+    if (!news.cfg) return;
+    news.source = source;
+    $('#newsMain').hidden = false; $('#newsDone').hidden = true; $('#newsNote').textContent = '';
+    if (!$('#newsName').value) $('#newsName').value = ($('#o-name').value || '').trim().split(' ')[0];
+    if (!$('#newsDlg').open) $('#newsDlg').showModal();
+  }
+  const closeNews = (later) => { if (later && ls.get('dd-news', '') !== 'yes') ls.set('dd-news-later', Date.now()); $('#newsDlg').close(); };
+  $('#newsClose').onclick = () => closeNews(true);
+  $('#newsDlg').addEventListener('cancel', () => { if (ls.get('dd-news', '') !== 'yes') ls.set('dd-news-later', Date.now()); });
+  $('#newsDlg').addEventListener('click', e => { if (e.target === $('#newsDlg')) closeNews(true); });
+  $('#newsOk').onclick = () => closeNews(false);
+  document.addEventListener('click', e => { if (e.target.closest('.news-open')) { e.preventDefault(); if ($('#stampDlg').open) $('#stampDlg').close(); openNews(e.target.closest('#stampDlg') ? 'stamps' : 'footer'); } });
+  $('#newsForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $('#newsEmail').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) { $('#newsNote').textContent = 'Please enter a valid email address, like name@gmail.com.'; $('#newsNote').classList.add('err'); $('#newsEmail').focus(); return; }
+    $('#newsGo').disabled = true; $('#newsNote').classList.remove('err'); $('#newsNote').textContent = '';
+    try {
+      const r = await api('/api/news', { method: 'POST', body: JSON.stringify({ email, name: $('#newsName').value, phone: stamp.phone || '', source: news.source || 'popup', website: $('#newsHp').value }) });
+      ls.set('dd-news', 'yes'); news.code = r.code;
+      $('#newsMain').hidden = true; $('#newsDone').hidden = false;
+      $('#newsCodeBox').hidden = !r.code; if (r.code) $('#newsCode').textContent = r.code;
+      document.querySelectorAll('.news-open').forEach(b => { b.hidden = true; });
+    } catch (err) { $('#newsNote').textContent = err.message; $('#newsNote').classList.add('err'); }
+    $('#newsGo').disabled = false;
+  });
+  $('#newsCopy').onclick = async () => { try { await navigator.clipboard.writeText(news.code || ''); } catch {} $('#newsCopy').textContent = 'Copied ✓'; setTimeout(() => { $('#newsCopy').textContent = 'Copy'; }, 2000); };
+  $('#newsUse').onclick = () => { $('#newsDlg').close(); $('#o-code').value = news.code || ''; openDrawer(); setTimeout(() => { $('#codeApply').click(); $('#o-code').scrollIntoView({ block: 'center' }); }, 350); };
+  // privacy notice
+  document.addEventListener('click', e => { if (e.target.closest('#privacyOpen, [data-privacy]')) { e.preventDefault(); $('#privacyDlg').showModal(); } });
+  $('#privClose').onclick = $('#privOk').onclick = () => $('#privacyDlg').close();
+
+  // ---------- for Google: business details (hours and menu with prices) as structured data, always up to date
+  // https://schema.org/CafeOrCoffeeShop · read by Google when it renders the page. The address comes from your
+  // Google Business Profile, so it isn't repeated here.
+  function seoData() {
+    try {
+      const origin = location.origin, days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const hm = (t) => String(t || '').slice(0, 5);
+      const hours = [0, 1, 2, 3, 4, 5, 6].map((i) => cat.hours?.days?.[i]).map((d, i) => (d && !d.closed ? { '@type': 'OpeningHoursSpecification', dayOfWeek: 'https://schema.org/' + days[i], opens: hm(d.open), closes: hm(d.close) } : null)).filter(Boolean);
+      const sections = {};
+      for (const it of cat.items || []) {
+        if (it.price == null || BUNDLE_NAME.test(it.name)) continue;
+        const sec = sections[it.cat] ||= { '@type': 'MenuSection', name: CAT_LABEL?.[it.cat] || it.cat, hasMenuItem: [] };
+        sec.hasMenuItem.push({ '@type': 'MenuItem', name: it.name, ...(it.desc ? { description: it.desc } : {}), offers: { '@type': 'Offer', price: (it.price / 100).toFixed(2), priceCurrency: 'PHP', availability: it.soldOut ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock' } });
+      }
+      const data = {
+        '@context': 'https://schema.org', '@type': 'CafeOrCoffeeShop', '@id': origin + '/#cafe',
+        name: "Demetria's Diner", slogan: 'Come for the drinks, stay for the comfort.', url: origin + '/',
+        logo: origin + '/icons/icon-512.png', image: [origin + '/icons/og-image.jpg'],
+        servesCuisine: ['Coffee', 'Matcha', 'Milk Tea', 'Filipino', 'Silog', 'Pastries'], priceRange: '₱', currenciesAccepted: 'PHP',
+        paymentAccepted: 'Cash, GCash, Maya', acceptsReservations: false,
+        sameAs: ['https://www.facebook.com/demetriasblngsn'],
+        ...(hours.length ? { openingHoursSpecification: hours } : {}),
+        hasMenu: { '@type': 'Menu', name: 'Menu', url: origin + '/#menu', hasMenuSection: Object.values(sections) },
+        potentialAction: { '@type': 'OrderAction', target: { '@type': 'EntryPoint', urlTemplate: origin + '/#menu', actionPlatform: ['https://schema.org/DesktopWebPlatform', 'https://schema.org/MobileWebPlatform'] }, deliveryMethod: ['http://purl.org/goodrelations/v1#DeliveryModePickUp', 'http://purl.org/goodrelations/v1#DeliveryModeOwnFleet'] },
+      };
+      let el = document.getElementById('ld-cafe');
+      if (!el) { el = document.createElement('script'); el.type = 'application/ld+json'; el.id = 'ld-cafe'; document.head.append(el); }
+      el.textContent = JSON.stringify(data);
+      // one address for Google: the one people are on (your .com once it's connected)
+      let c = document.querySelector('link[rel=canonical]');
+      if (!c) { c = document.createElement('link'); c.rel = 'canonical'; document.head.append(c); }
+      c.href = origin + '/';
+    } catch (e) { console.warn('seo', e); }
+  }
   // ---------- loading screen: leaves once the menu is ready (at least a short moment so it doesn't flash, at most 6 s)
   const splashT0 = performance.now();
   function hideSplash() {
@@ -1329,7 +1420,7 @@
     apiState = 'ready';
     if (pin && cat.delivery.enabled) pin = { ...quote(pin.lat, pin.lng) };
     lastSig = promoSig();
-    render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart(); maybeAutoPopup(); hideSplash();
+    render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart(); maybeAutoPopup(); hideSplash(); seoData(); applyNews();
     if (cat.loyalty?.enabled && stamp.phone && !stamp.card && !stampLooked) { stampLooked = true; checkStamp(true); }
   }
   async function loadMenu() {

@@ -3,10 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Demetria's Diner · Matcha, Coffee, Milk Tea &amp; Food</title>
-<meta name="description" content="Demetria's Diner: espresso and coffee, boba tea, G-Matcha, fruit lattes, fruit sodas and diner food classics. Come for the drinks, stay for the comfort.">
-<meta property="og:title" content="Demetria's Diner">
-<meta property="og:description" content="Come for the drinks, stay for the comfort. Order online for pickup.">
+<title>Demetria's Diner · Matcha, Coffee, Milk Tea &amp; Silog · Order Online</title>
+<meta name="description" content="Order matcha, iced coffee, milk tea, fruit sodas, silog meals and pastries from Demetria's Diner. Order online for pickup or delivery and pay with GCash, Maya or cash. Come for the drinks, stay for the comfort.">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Demetria's Diner">
+<meta property="og:locale" content="en_PH">
+<meta property="og:title" content="Demetria's Diner · Matcha, Coffee, Milk Tea &amp; Food">
+<meta property="og:description" content="Come for the drinks, stay for the comfort. Order online for pickup or delivery, pay with GCash or Maya.">
+<meta property="og:image" content="/icons/og-image.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Demetria's Diner: the black cat peeking out of a matcha boba cup">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/icons/og-image.jpg">
 <meta name="theme-color" content="#066B23">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='19' fill='%23066B23'/%3E%3Cpath d='M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z' fill='%23111'/%3E%3Ccircle cx='16.2' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3Ccircle cx='23.8' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -88,6 +98,15 @@
     <div class="sp-bar"><i></i></div>
   </div>
 </div>
+<script>
+/* Safety net: the loading screen always goes away (after 7 s at most, or right away if the page script fails),
+   so customers can still see the menu even if something goes wrong. */
+(function () {
+  function bye() { var el = document.getElementById('splash'); if (!el || el.className.indexOf('out') > -1) return; el.className += ' out'; setTimeout(function () { el.remove && el.remove(); }, 800); }
+  setTimeout(bye, 7000);
+  window.addEventListener('error', function () { setTimeout(bye, 300); });
+})();
+</script>
 <header>
   <div class="wrap nav">
     <a class="logo" href="#top" aria-label="Demetria's Diner home">
@@ -254,6 +273,8 @@
       <span>© 2026 Demetria's Diner</span>
       <span>Come for the drinks, stay for the comfort.</span>
       <button class="linkbtn get-app" type="button" hidden>📱 Add Demetria's to your home screen</button>
+      <button class="linkbtn news-open" type="button" hidden>💌 Get promos by email</button>
+      <button class="linkbtn" type="button" id="privacyOpen">Privacy</button>
     </div>
   </div>
 </footer>
@@ -364,6 +385,64 @@
     <div class="field"><label for="sdlgPhone">Your mobile number</label>
       <div class="code-row"><input id="sdlgPhone" inputmode="tel" maxlength="16" autocomplete="tel" placeholder="0917 123 4567"><button class="btn" type="button" id="sdlgCheck">Check my stamps</button></div></div>
     <div id="sdlgCard"></div>
+    <button class="linkbtn news-open" type="button" hidden style="margin-top:10px">💌 Get promo codes by email too</button>
+  </div>
+</dialog>
+
+<!-- Newsletter sign-up (Staff → Settings → Newsletter) -->
+<dialog id="newsDlg" class="news-dlg" aria-labelledby="newsTitle">
+  <form class="dlg" id="newsForm" novalidate>
+    <button class="x" type="button" id="newsClose" aria-label="Close">×</button>
+    <div class="news-art" aria-hidden="true">
+      <svg viewBox="0 0 120 90"><rect x="14" y="30" width="92" height="56" rx="8" fill="#FFFDF5" stroke="#111" stroke-width="4"/><path d="M16 34 L60 64 L104 34" fill="none" stroke="#111" stroke-width="4" stroke-linejoin="round"/>
+        <path d="M40 34 L43 12 L53 22 Z M80 34 L77 12 L67 22 Z" fill="#111"/><ellipse cx="60" cy="32" rx="22" ry="15" fill="#111"/><ellipse class="news-eye" cx="52" cy="30" rx="3.6" ry="4.2" fill="#FFF9E8"/><ellipse class="news-eye" cx="68" cy="30" rx="3.6" ry="4.2" fill="#FFF9E8"/>
+        <path class="news-heart" d="M98 14 c-4-6-12-2-9 4 l9 9 l9-9 c3-6-5-10-9-4z" fill="#e0352b"/></svg>
+    </div>
+    <div id="newsMain">
+      <h3 id="newsTitle">Get our promos first 💌</h3>
+      <p id="newsText" class="news-text"></p>
+      <p class="news-gift" id="newsGift" hidden>🎁 Sign up now and get a <b>welcome promo code</b> right away!</p>
+      <div class="field"><label for="newsEmail">Email</label><input id="newsEmail" type="email" inputmode="email" autocomplete="email" maxlength="120" placeholder="you@gmail.com" required></div>
+      <div class="field"><label for="newsName">First name <span class="opt-t">(optional)</span></label><input id="newsName" autocomplete="given-name" maxlength="60" placeholder="Mika"></div>
+      <input id="newsHp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
+      <button class="btn" type="submit" id="newsGo">Sign me up</button>
+      <p class="news-fine">Promo emails only, about once a week. Unsubscribe anytime with the link in every email. <button class="linkbtn" type="button" data-privacy>Privacy notice</button></p>
+      <p class="note" id="newsNote" role="status"></p>
+    </div>
+    <div id="newsDone" hidden>
+      <h3>You're in! 🎉</h3>
+      <p class="news-text">Watch your inbox for new drinks and promo codes.</p>
+      <div class="news-code" id="newsCodeBox" hidden><span>Your welcome code</span><b id="newsCode">CODE</b>
+        <div class="row-btns"><button class="btn" type="button" id="newsUse">Use it in my cart</button><button class="btn ghost" type="button" id="newsCopy">Copy</button></div></div>
+      <button class="btn ghost" type="button" id="newsOk">Back to the menu</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Privacy notice (Data Privacy Act) -->
+<dialog id="privacyDlg" class="privacy-dlg" aria-labelledby="privTitle">
+  <div class="dlg">
+    <div class="qr-head"><h3 id="privTitle">Privacy notice</h3><button class="x" type="button" id="privClose" aria-label="Close">×</button></div>
+    <div class="priv-body">
+      <p>Demetria's Diner only collects what we need to take your order and run our promos. We follow the Data Privacy Act of 2012 (RA 10173).</p>
+      <h4>What we collect and why</h4>
+      <ul>
+        <li><b>Your name, order and notes</b> to make your order and call you when it's ready.</li>
+        <li><b>Delivery address and phone</b> (delivery orders only) so our rider can find you.</li>
+        <li><b>Mobile number</b> (optional) for your stamp card.</li>
+        <li><b>Email and first name</b> (optional) only if you sign up for promo emails.</li>
+        <li><b>Payment reference numbers</b> to confirm GCash / Maya payments. We never see your PIN or card details.</li>
+      </ul>
+      <h4>Who sees it</h4>
+      <p>Only our staff. Promo emails may be sent through an email service (like Brevo or Mailchimp) on our behalf. We don't sell your information.</p>
+      <h4>Your choices</h4>
+      <ul>
+        <li>Unsubscribe from emails anytime with the link in every email.</li>
+        <li>Ask us to see, correct or delete your information by messaging our Facebook page.</li>
+      </ul>
+      <p class="hint-sm">This website also saves your cart, your recent orders and your settings on your phone so they're there next time.</p>
+    </div>
+    <button class="btn" type="button" id="privOk">OK</button>
   </div>
 </dialog>
 

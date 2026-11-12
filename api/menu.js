@@ -7,6 +7,7 @@ import { paymongoConfigured } from '../lib/paymongo.js';
 import { popupCodes, popupQuery } from '../lib/promocodes.js';
 import { dealsQuery, dealsFor, publicDeal } from '../lib/deals.js';
 import { publicLoyalty } from '../lib/loyalty.js';
+import { publicNews } from '../lib/newsletter.js';
 import { upsellFeed } from '../lib/upsell.js';
 
 // GET /api/menu         → products, add-ons, payment and delivery options (one database round trip)
@@ -64,6 +65,7 @@ export default route(['GET'], async (req, res) => {
     // Buy 1 Take 1 deals for online orders (Staff → Settings → Buy 1 Take 1). The browser checks days/dates for the order time.
     deals: dealsFor(dealRows, 'online').map(publicDeal),
     loyalty: publicLoyalty(s.loyalty), // stamp card rules (no customer data)
+    newsletter: publicNews(s.newsletter), // sign-up pop-up text (the welcome code is only given after signing up)
     upsell,                             // "Add something?" cart suggestions
     items: products.map(publicProduct),
     addons: addons.filter((a) => a.active).map(publicAddon),

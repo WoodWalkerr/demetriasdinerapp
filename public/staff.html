@@ -429,6 +429,28 @@
         </div>
         <div class="row-btns"><button class="btn ghost" type="button" id="ladjSave">Save adjustment</button><span class="hint" id="ladjInfo"></span></div>
       </div>
+      <div class="box news-box" style="margin-top:16px">
+        <div class="view-head" style="margin:0"><h3>💌 Newsletter</h3><label class="switchrow" for="nwOn"><input type="checkbox" class="toggle" id="nwOn"> Sign-up pop-up on</label></div>
+        <p class="hint">Customers leave their email in a pop-up on the website (once per visit; again 14 days after "No thanks"), in the footer, and in "My stamps". Only people who signed up themselves are on the list. Export it each week and send your email with Brevo or Mailchimp.</p>
+        <div class="row3">
+          <div class="field"><label for="nwTitle">Pop-up title</label><input id="nwTitle" maxlength="60" placeholder="Get our promos first 💌"></div>
+          <div class="field"><label for="nwButton">Button</label><input id="nwButton" maxlength="24" placeholder="Sign me up"></div>
+          <div class="field"><label for="nwDelay">Show after (seconds)</label><input id="nwDelay" type="number" min="3" max="600" step="1" placeholder="25"></div>
+        </div>
+        <div class="field"><label for="nwText">Message</label><input id="nwText" maxlength="200" placeholder="New drinks, promo codes and Buy 1 Take 1 deals in your inbox, about once a week."></div>
+        <div class="row3">
+          <div class="field"><label for="nwCode">Welcome promo code (optional)</label><input id="nwCode" maxlength="20" autocapitalize="characters" placeholder="e.g. WELCOME10"></div>
+          <p class="hint" style="grid-column:span 2;align-self:end;margin:0">Shown right after they sign up, as a thank-you. Make the code first in <b>Promo codes</b> (tip: 1 use per customer isn't checked by email, so keep it small, like 10% off).</p>
+        </div>
+        <div class="row-btns"><button class="btn" type="button" id="nwSave">Save newsletter</button></div>
+        <h4 class="tiers-h">Subscribers</h4>
+        <p class="news-stats" id="nwStats">…</p>
+        <div class="row-btns"><a class="btn ghost" id="nwExport" href="/api/staff/subscribers?format=csv" download>📥 Export subscribers (CSV)</a></div>
+        <p class="hint" style="margin:6px 0 0">The file works with Brevo and Mailchimp (Contacts → Import). It has each person's own <b>unsubscribe link</b>; those apps add their own unsubscribe link too. People who unsubscribe here are left out of the next export.</p>
+        <h4 class="tiers-h">Remove someone</h4>
+        <div class="row3"><div class="field" style="grid-column:span 2"><label for="nwDel">Email (if a customer asks to be deleted)</label><input id="nwDel" type="email" maxlength="120" placeholder="name@gmail.com"></div>
+          <div class="row-btns" style="align-self:end"><button class="btn ghost" type="button" id="nwDelBtn">Remove</button></div></div>
+      </div>
       <div class="box upsell-box" style="margin-top:16px">
         <div class="view-head" style="margin:0"><h3>🍪 Cart suggestions</h3><label class="switchrow" for="upOn"><input type="checkbox" class="toggle" id="upOn"> Suggestions on</label></div>
         <p class="hint">"Add something?" in the customer's cart (one tap) and as hints on the POS ticket. Your suggestions come first; then, if switched on, what customers actually buy together; then a popular pastry with a drink, or a popular drink with food.</p>
@@ -498,6 +520,8 @@
           <div class="field"><label for="cfMin">Minimum order (₱)</label><input id="cfMin" type="number" min="0" step="1" placeholder="0"></div>
           <div class="field"><label for="cfStart">Starts (optional)</label><input id="cfStart" type="date"></div>
           <div class="field"><label for="cfEnd">Ends (optional)</label><input id="cfEnd" type="date"></div>
+          <div class="field"><label for="cfFrom">From time (optional)</label><input id="cfFrom" type="time" step="900"></div>
+          <div class="field"><label for="cfTo">Until time (optional)</label><input id="cfTo" type="time" step="900"></div>
           <div class="field"><label for="cfUses">Max uses (optional)</label><input id="cfUses" type="number" min="1" step="1" placeholder="Unlimited"></div>
           <div class="field"><label for="cfChannel">Works</label><select id="cfChannel"><option value="both">Online &amp; in store</option><option value="online">Online only</option><option value="pos">In store (POS) only</option></select></div>
           <div class="field grow"><label for="cfNote">Note for staff (optional)</label><input id="cfNote" maxlength="120" placeholder="e.g. Facebook giveaway"></div>

@@ -812,7 +812,7 @@
       : list.length ? `<p class="hint">Saved promo codes, tap one to use it:</p><div class="code-chips">${list.map(c => `
           <button type="button" class="code-chip ${posCode?.code === c.code ? 'on' : ''}" data-pick-code="${esc(c.code)}" ${c.usable ? '' : 'disabled'}>
             <b>${esc(c.code)}</b><span>${esc(c.label)}${c.minCents ? ` · min ${money(c.minCents)}` : ''}</span>
-            <small>${c.usable ? [c.note, c.endsOn ? `until ${c.endsOn}` : '', c.usesLeft != null ? `${c.usesLeft} left` : ''].filter(Boolean).map(esc).join(' · ') || 'Ready to use' : esc(c.why)}</small>
+            <small>${c.usable ? [c.note, c.hours ? c.hours : '', c.endsOn ? `until ${c.endsOn}` : '', c.usesLeft != null ? `${c.usesLeft} left` : ''].filter(Boolean).map(esc).join(' · ') || 'Ready to use' : esc(c.why)}</small>
           </button>`).join('')}</div>`
       : '<p class="hint">No promo codes saved yet. Admins and managers can add them in Settings → Promo codes.</p>';
   }
@@ -1263,7 +1263,7 @@
     if (document.activeElement !== $('#storeLat') && document.activeElement !== $('#storeLng')) { $('#storeLat').value = storePin ? storePin.lat.toFixed(6) : ''; $('#storeLng').value = storePin ? storePin.lng.toFixed(6) : ''; }
     const ready = !!storePin;
     $('#delToggle').disabled = !ready && !$('#delToggle').checked;
-    renderHours(); renderPromos(); renderSummaryBox(); renderLoyaltyBox(); renderUpsellBox();
+    renderHours(); renderPromos(); renderSummaryBox(); renderLoyaltyBox(); renderUpsellBox(); renderNewsBox();
     initSetMap();
   }
   function drawTiers() {
@@ -1459,7 +1459,7 @@
     const today = cafeDate(new Date(), 4);
     $('#codeRows').innerHTML = (codesData?.codes || []).map(c => {
       const ended = c.endsOn && c.endsOn < today, used = c.maxUses != null && c.uses >= c.maxUses;
-      const rules = [c.minCents ? `Min ${money(c.minCents)}` : '', c.startsOn || c.endsOn ? `${c.startsOn || '…'} → ${c.endsOn || '…'}` : '', CHANNEL[c.channel]].filter(Boolean).join(' · ');
+      const rules = [c.minCents ? `Min ${money(c.minCents)}` : '', c.startsOn || c.endsOn ? `${c.startsOn || '…'} → ${c.endsOn || '…'}` : '', c.startTime ? `⏰ ${t12h(c.startTime)}–${t12h(c.endTime)} daily` : '', CHANNEL[c.channel]].filter(Boolean).join(' · ');
       return `<tr data-code="${esc(c.code)}" class="${!c.active || ended || used ? 'muted-row' : ''}">
         <td><b class="mono">${esc(c.code)}</b>${c.note ? `<br><small class="hint">${esc(c.note)}</small>` : ''}</td>
         <td>${esc(c.label)}</td><td><small>${esc(rules)}</small>${ended ? '<br><small class="bad">Ended</small>' : used ? '<br><small class="bad">Used up</small>' : ''}</td>
@@ -1511,7 +1511,7 @@
     $('#cfCode').value = c.code; $('#cfCode').readOnly = true; $('#cfGen').hidden = true;
     $('#cfKind').value = c.kind; $('#cfValue').value = c.kind === 'fixed' ? c.value / 100 : c.kind === 'pct' ? c.value : '';
     $('#cfMax').value = c.maxOffCents ? c.maxOffCents / 100 : ''; $('#cfMin').value = c.minCents ? c.minCents / 100 : '';
-    $('#cfStart').value = c.startsOn || ''; $('#cfEnd').value = c.endsOn || ''; $('#cfUses').value = c.maxUses ?? ''; $('#cfChannel').value = c.channel; $('#cfNote').value = c.note || '';
+    $('#cfStart').value = c.startsOn || ''; $('#cfEnd').value = c.endsOn || ''; $('#cfFrom').value = c.startTime || ''; $('#cfTo').value = c.endTime || ''; $('#cfUses').value = c.maxUses ?? ''; $('#cfChannel').value = c.channel; $('#cfNote').value = c.note || '';
     $('#cfPopup').checked = c.popup; $('#cfPopupMore').hidden = !c.popup; $('#cfPopTitle').value = c.popupTitle || ''; $('#cfPopText').value = c.popupText || '';
     if (c.kind === 'bogo' && c.bogo) {
       bgBuy.fill(c.bogo.buyIds); bgGet.fill(c.bogo.getIds); $('#bgBuyQty').value = c.bogo.buyQty || 1; $('#bgMax').value = c.bogo.max ?? '';
@@ -1531,7 +1531,7 @@
     e.preventDefault();
     const body = { code: $('#cfCode').value, kind: $('#cfKind').value, value: $('#cfValue').value, maxOff: $('#cfKind').value === 'pct' ? $('#cfMax').value : '',
       bogo: $('#cfKind').value === 'bogo' ? { buyIds: [...bgBuy.set], buyQty: $('#bgBuyQty').value, buyLabel: $('#bgBuyLabel').value, getIds: [...bgGet.set], getLabel: $('#bgGetLabel').value, getPct: bgPctVal(), max: $('#bgMax').value } : undefined,
-      minOrder: $('#cfMin').value, startsOn: $('#cfStart').value, endsOn: $('#cfEnd').value, maxUses: $('#cfUses').value, channel: $('#cfChannel').value, note: $('#cfNote').value,
+      minOrder: $('#cfMin').value, startsOn: $('#cfStart').value, endsOn: $('#cfEnd').value, startTime: $('#cfFrom').value, endTime: $('#cfTo').value, maxUses: $('#cfUses').value, channel: $('#cfChannel').value, note: $('#cfNote').value,
       popup: $('#cfPopup').checked, popupTitle: $('#cfPopTitle').value, popupText: $('#cfPopText').value };
     if (body.kind === 'bogo') delete body.value;
     try {
@@ -1570,6 +1570,7 @@
   let dealsData = null, dealEdit = null, dealPick = new Set(), dealDays = new Set();
   const CHANNEL_D = { both: 'Online & in store', online: 'Online only', pos: 'In store only' };
   async function loadDeals() { if (!can('settings')) return; try { dealsData = (await api('/api/staff/deals')).deals; renderDeals(); } catch (e) { fail(e); } }
+  const t12h = (t) => { const h = +t.slice(0, 2), m = t.slice(3, 5); return `${h % 12 || 12}${m === '00' ? '' : ':' + m} ${h < 12 ? 'AM' : 'PM'}`; };
   const dealWhen = (d) => [d.days?.length ? d.days.map(x => DAY_SHORT[x]).join(', ') : 'Every day', d.startsOn || d.endsOn ? `${d.startsOn || '…'} → ${d.endsOn || '…'}` : '', CHANNEL_D[d.channel], d.maxPairs ? `max ${d.maxPairs}/order` : ''].filter(Boolean).join(' · ');
   function renderDeals() {
     const P = prodById(), today = cafeDate(new Date(), 4);
@@ -1635,6 +1636,27 @@
       try { await api('/api/staff/deals', { method: 'DELETE', body: { id: d.id } }); toast('Deal deleted'); loadDeals(); loadCatalog(); } catch (err) { fail(err); }
     }
   });
+
+  // ===================================================================== NEWSLETTER SETTINGS
+  function renderNewsBox() {
+    const N = settings.newsletter || {};
+    $('#nwOn').checked = !!N.enabled;
+    if (document.activeElement?.closest?.('.news-box') == null) { $('#nwTitle').value = N.title || ''; $('#nwText').value = N.text || ''; $('#nwButton').value = N.button || ''; $('#nwDelay').value = N.delay || 25; $('#nwCode').value = N.welcomeCode || ''; }
+    loadNewsStats();
+  }
+  async function loadNewsStats() {
+    try { const c = await api('/api/staff/subscribers');
+      $('#nwStats').innerHTML = `<b>${c.active}</b> subscriber${c.active === 1 ? '' : 's'} · <b>+${c.week}</b> this week${c.unsubscribed ? ` · ${c.unsubscribed} unsubscribed` : ''}`; }
+    catch (err) { $('#nwStats').textContent = err.status === 403 ? 'Only staff with the Settings permission can see the list.' : err.message; }
+  }
+  const saveNews = async () => { if (await saveSettings({ newsletter: { enabled: $('#nwOn').checked, title: $('#nwTitle').value, text: $('#nwText').value, button: $('#nwButton').value, delay: $('#nwDelay').value, welcomeCode: $('#nwCode').value } }, 'Newsletter saved')) $('#nwCode').value = settings.newsletter?.welcomeCode || ''; };
+  $('#nwSave').onclick = saveNews; $('#nwOn').onchange = saveNews;
+  $('#nwExport').addEventListener('click', () => setTimeout(loadNewsStats, 1500));
+  $('#nwDelBtn').onclick = async () => {
+    const e = $('#nwDel').value.trim(); if (!e) return $('#nwDel').focus();
+    if (!confirm(`Remove ${e} from the newsletter list completely?`)) return;
+    try { await api('/api/staff/subscribers', { method: 'DELETE', body: { email: e } }); $('#nwDel').value = ''; toast('Removed from the list'); loadNewsStats(); } catch (err) { fail(err); }
+  };
 
   // ===================================================================== STAMP CARD SETTINGS
   let loyCatsDraft = null;
@@ -1724,14 +1746,14 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
-    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order',
+    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
     'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',
   };
   const WARN = new Set(['order.void', 'order.refund', 'expense.delete', 'product.delete', 'login.failed', 'payment.reject', 'user.delete', 'code.delete']);
   const MONEY_KEYS = new Set(['price', 'cost', 'cents', 'totalCents', 'openingCents', 'countedCents', 'expectedCents', 'overShortCents']);
-  const LABEL = { delta: 'Stamps',  label: 'Discount', channel: 'Works', maxUses: 'Max uses', startsOn: 'Starts', endsOn: 'Ends', price: 'Price', cost: 'Cost', name: 'Name', cat: 'Category', hot: 'Hot', available: 'Available', low: 'Low-stock alert', grp: 'Applies to', active: 'Active', role: 'Role', username: 'Username', perms: 'Permissions', password: 'Password' };
+  const LABEL = { delta: 'Stamps',  label: 'Discount', channel: 'Works', maxUses: 'Max uses', startsOn: 'Starts', endsOn: 'Ends', hours: 'Hours', price: 'Price', cost: 'Cost', name: 'Name', cat: 'Category', hot: 'Hot', available: 'Available', low: 'Low-stock alert', grp: 'Applies to', active: 'Active', role: 'Role', username: 'Username', perms: 'Permissions', password: 'Password' };
   const val = (k, v) => (v == null || v === '' ? '—' : MONEY_KEYS.has(k) ? money(v) : k === 'cat' ? CAT[v] || v : k === 'channel' ? CHANNEL[v] || v : typeof v === 'boolean' ? (v ? 'yes' : 'no') : Array.isArray(v) ? v.join(', ') : esc(String(v)));
   function acDetail(e) {
     const d = e.detail || {};
