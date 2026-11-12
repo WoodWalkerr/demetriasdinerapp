@@ -30,10 +30,12 @@
     </a>
     <ul>
       <li><a href="#menu">Menu</a></li>
+      <li class="nav-app" hidden><a href="#app" class="get-app">📱 Get the app</a></li>
+      <li class="nav-stamps" hidden><a href="#stamps" id="navStamps">🎟️ My stamps</a></li>
       <li><a href="#how">How to order</a></li>
       <li><a href="#visit">Visit</a></li>
     </ul>
-    <div class="nav-actions"><button class="btn" id="orderBtn" type="button">Order ahead</button></div>
+    <div class="nav-actions"><button class="btn ghost stamps-mini" type="button" data-open-stamps hidden aria-label="My stamps">🎟️<span> Stamps</span></button><button class="btn" id="orderBtn" type="button">Order ahead</button></div>
   </div>
 </header>
 
@@ -162,6 +164,7 @@
         <p>Order online for pickup or delivery, now or ahead for later, and pay with GCash, Maya, or at the counter. Message us on Facebook for big orders.</p>
         <button class="btn" type="button" id="visitOrder">Start an order</button>
         <button class="btn ghost on-dark" type="button" id="visitStamps" hidden>🎟️ Check my stamps</button>
+        <button class="btn ghost on-dark get-app" type="button" hidden>📱 Get the app</button>
       </div>
       <div class="panel light">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
@@ -184,6 +187,7 @@
     <div class="foot">
       <span>© 2026 Demetria's Diner</span>
       <span>Come for the drinks, stay for the comfort.</span>
+      <button class="linkbtn get-app" type="button" hidden>📱 Add Demetria's to your home screen</button>
     </div>
   </div>
 </footer>
@@ -234,9 +238,11 @@
       <div class="code-on" id="codeOn" hidden></div>
     </div>
     <div class="field stamp-f" id="stampF" hidden>
-      <label for="o-stamp">🎟️ <span id="stampName">Stamp card</span>: your mobile number (optional)</label>
-      <div class="code-row"><input id="o-stamp" inputmode="tel" maxlength="16" autocomplete="tel" placeholder="0917 123 4567"><button class="btn ghost" type="button" id="stampCheck">Check</button></div>
-      <div class="stamp-card" id="stampInfo" hidden></div>
+      <label for="o-stamp">🎟️ Collect a stamp <span class="opt-t">(optional)</span></label>
+      <p class="stamp-how" id="stampHow">Type your mobile number to get today's stamp.</p>
+      <div class="code-row"><input id="o-stamp" inputmode="tel" maxlength="16" autocomplete="tel" placeholder="0917 123 4567"><button class="btn ghost" type="button" id="stampCheck">Add</button></div>
+      <div id="stampInfo" hidden></div>
+      <button class="linkbtn" type="button" data-open-stamps>How the stamp card works</button>
     </div>
     <div class="field"><label for="o-note">Note for the barista</label><textarea id="o-note" maxlength="200" placeholder="Allergies, extra hot, name on cup…"></textarea></div>
     <div class="mine" id="mine" hidden></div>
@@ -249,7 +255,7 @@
   </div>
 </aside>
 
-<!-- "Install Demetria's" (Add to Home Screen) for returning customers -->
+<!-- "Install Demetria's" (Add to Home Screen): every phone, with the right steps for each browser -->
 <div class="install-bar" id="installBar" role="dialog" aria-label="Install Demetria's" hidden>
   <img src="/icons/icon-192.png" alt="" width="44" height="44">
   <div><b>Get the Demetria's app</b><small id="installSub">Order in two taps from your home screen. Free, no app store.</small></div>
@@ -258,12 +264,10 @@
 </div>
 <dialog id="iosDlg" class="ios-dlg" aria-labelledby="iosTitle">
   <div class="dlg">
-    <h3 id="iosTitle">Add Demetria's to your home screen</h3>
-    <ol>
-      <li>Tap the <b>Share</b> button <span class="ios-share" aria-hidden="true">⬆︎</span> at the bottom of Safari (top right on iPad).</li>
-      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
-      <li>Tap <b>Add</b>. The cat icon appears on your home screen.</li>
-    </ol>
+    <div class="qr-head"><h3 id="iosTitle">Add Demetria's to your home screen</h3><button class="x" type="button" id="iosX" aria-label="Close">×</button></div>
+    <p class="ios-why">The cat icon goes on your home screen like an app: open it and order in two taps. Free, no app store, nothing to download.</p>
+    <ol id="instSteps"></ol>
+    <div class="inst-copy" id="instCopy" hidden><input id="instUrl" readonly aria-label="Website link"><button class="btn ghost sm" type="button" id="instCopyBtn">Copy link</button></div>
     <button class="btn" type="button" id="iosOk">Got it</button>
   </div>
 </dialog>
@@ -283,6 +287,17 @@
     <div class="pp-others" id="ppOthers" hidden></div>
     <div class="pp-btns"><button class="btn" type="button" id="ppUse">Use this code</button><button class="btn ghost" type="button" id="ppCopy">Copy code</button></div>
     <button class="linkbtn pp-later" type="button" id="ppLater">Maybe later</button>
+  </div>
+</dialog>
+
+<!-- My stamps: check your card any time -->
+<dialog id="stampDlg" class="stamp-dlg" aria-labelledby="sdlgTitle">
+  <div class="dlg">
+    <div class="qr-head"><h3 id="sdlgTitle">🎟️ <span id="sdlgName">Stamp card</span></h3><button class="x" type="button" id="sdlgClose" aria-label="Close">×</button></div>
+    <ol class="stamp-steps" id="sdlgSteps"></ol>
+    <div class="field"><label for="sdlgPhone">Your mobile number</label>
+      <div class="code-row"><input id="sdlgPhone" inputmode="tel" maxlength="16" autocomplete="tel" placeholder="0917 123 4567"><button class="btn" type="button" id="sdlgCheck">Check my stamps</button></div></div>
+    <div id="sdlgCard"></div>
   </div>
 </dialog>
 
@@ -314,16 +329,32 @@
       <div><p class="eyebrow" id="qrCode">Order #D000</p><h3 id="qrTitle" style="margin-top:8px">Pay with GCash or Maya</h3></div>
       <button class="x" type="button" id="qrClose" aria-label="Close">×</button>
     </div>
-    <div class="qr-amount"><span>Send exactly</span><b id="qrAmount">₱0</b></div>
-    <img id="qrImg" class="qr-img" alt="Demetria's Diner GCash QR code" src="data:,">
-    <dl class="qr-acct"><dt>Account name</dt><dd id="qrName">—</dd><dt>Number</dt><dd><span id="qrNum">—</span> <button type="button" class="linkbtn" id="qrCopy">Copy</button></dd></dl>
-    <ol class="qr-steps">
-      <li>Open <b>GCash</b> or <b>Maya</b> and choose <b>Pay QR</b> / <b>Scan</b>.</li>
-      <li>On this phone? Take a screenshot of the QR, then use <b>Upload QR</b> from your gallery.</li>
-      <li>Pay the exact amount, then type the <b>reference number</b> from your receipt below.</li>
+    <div class="qr-amount"><div><span>Pay exactly</span><b id="qrAmount">₱0</b></div><button class="btn ghost sm" type="button" id="qrAmtCopy">Copy amount</button></div>
+    <ol class="pay-steps">
+      <li class="ps" id="ps1"><b class="ps-n">1</b><div>
+        <p class="ps-t" id="ps1t">Save our QR to your photos</p>
+        <img id="qrImg" class="qr-img" alt="Demetria's Diner GCash QR code" src="data:,">
+        <dl class="qr-acct"><dt>Account name</dt><dd id="qrName">—</dd><dt>Number</dt><dd><span id="qrNum">—</span> <button type="button" class="linkbtn" id="qrCopy">Copy</button></dd></dl>
+        <button class="btn" type="button" id="qrSave">⬇️ Save QR to Photos</button>
+        <small class="ps-h" id="qrSaveHint">Or press and hold the QR, then tap <b>Save to Photos</b> / <b>Download image</b>.</small>
+      </div></li>
+      <li class="ps phone-only" id="ps2"><b class="ps-n">2</b><div>
+        <p class="ps-t">Open GCash and upload the QR</p>
+        <button class="btn gcash-btn" type="button" id="qrOpenG">Open GCash</button>
+        <small class="ps-h">In GCash tap <b>Pay QR</b> → <b>Upload QR</b> (top right) → choose the QR you saved. Using Maya? Tap <b>Scan</b> → <b>Upload QR</b>.</small>
+      </div></li>
+      <li class="ps" id="ps3"><b class="ps-n" id="ps3n">3</b><div>
+        <p class="ps-t">Paste the amount and pay</p>
+        <small class="ps-h">Paste <b id="qrAmount2">₱0</b> in the amount (you copied it above), tap <b>Next</b> → <b>Pay</b>, then enter your MPIN.</small>
+      </div></li>
+      <li class="ps" id="ps4"><b class="ps-n" id="ps4n">4</b><div>
+        <p class="ps-t">Copy the reference number and come back here</p>
+        <small class="ps-h">It's on your GCash receipt (<b>Ref No.</b>, 13 digits) or in the GCash text message.</small>
+        <div class="field"><label for="qrRef">Reference number</label>
+          <div class="code-row"><input id="qrRef" inputmode="numeric" autocomplete="off" maxlength="40" placeholder="e.g. 1234 567 891234"><button class="btn ghost" type="button" id="qrPaste">Paste</button></div></div>
+      </div></li>
     </ol>
-    <div class="field"><label for="qrRef">Reference number</label><input id="qrRef" inputmode="numeric" autocomplete="off" maxlength="30" placeholder="e.g. 1234 567 891234"></div>
-    <button class="btn" type="submit" id="qrSend" style="justify-content:center">I've paid · send reference</button>
+    <button class="btn" type="submit" id="qrSend" style="justify-content:center">I've paid · finish my order</button>
     <p class="note" id="qrNote" role="status"></p>
   </form>
 </dialog>

@@ -433,6 +433,8 @@
         <div class="view-head" style="margin:0"><h3>🍪 Cart suggestions</h3><label class="switchrow" for="upOn"><input type="checkbox" class="toggle" id="upOn"> Suggestions on</label></div>
         <p class="hint">"Add something?" in the customer's cart (one tap) and as hints on the POS ticket. Your suggestions come first; then, if switched on, what customers actually buy together; then a popular pastry with a drink, or a popular drink with food.</p>
         <label class="switchrow" for="upAuto"><input type="checkbox" class="toggle" id="upAuto"> Also learn from orders (bought together in the last 60 days)</label>
+        <div class="promo-row"><span class="lbl">Only suggest from</span><div class="chips" id="upOnly"></div></div>
+        <p class="hint" style="margin:0">Picked categories only (e.g. Pastries). None picked = anything. Items named like a promo bundle (e.g. "b1t1", "bundle") are never suggested.</p>
         <div id="upRules"></div>
         <div class="row-btns"><button class="btn ghost" type="button" id="upAdd">+ Add a suggestion</button><button class="btn" type="button" id="upSave">Save suggestions</button></div>
       </div>
@@ -628,6 +630,7 @@
 <dialog id="rcptDlg" aria-labelledby="rcptTitle">
   <div class="dlg">
     <div class="receipt" id="receipt"></div>
+    <div class="no-print" id="rcptStamp"></div>
     <div class="dlg-foot no-print">
       <button class="btn ghost" type="button" id="rcptPrint">Print</button>
       <button class="btn" type="button" id="rcptNew">Done</button>

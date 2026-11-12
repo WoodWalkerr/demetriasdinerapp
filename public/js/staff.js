@@ -41,18 +41,25 @@
     return !(d.startsOn && day < d.startsOn) && !(d.endsOn && day > d.endsOn) && !(d.days?.length && !d.days.includes(cafeClock(t, catalog.tz).dow));
   };
   function applyDeals(lines, deals) {
-    const used = new Map(), applied = [], waiting = []; let total = 0;
+    const used = new Map(), applied = [], waiting = [], lineOff = new Map(), lineDeal = new Map(); let total = 0;
     for (const d of deals || []) {
       const units = [];
       lines.forEach((l, i) => { if (!d.productIds.includes(l.id)) return; const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); for (let k = used.get(i) || 0; k < l.qty; k++) units.push({ i, base }); });
       units.sort((a, b) => b.base - a.base);
       let pairs = Math.floor(units.length / 2); if (d.maxPairs) pairs = Math.min(pairs, d.maxPairs);
       let off = 0;
-      for (let p = 0; p < pairs; p++) { const a = units[2 * p], b = units[2 * p + 1]; off += a.base + b.base - (d.pairCents != null ? Math.min(d.pairCents, a.base + b.base) : a.base); used.set(a.i, (used.get(a.i) || 0) + 1); used.set(b.i, (used.get(b.i) || 0) + 1); }
+      for (let p = 0; p < pairs; p++) {
+        const a = units[2 * p], b = units[2 * p + 1], save = a.base + b.base - (d.pairCents != null ? Math.min(d.pairCents, a.base + b.base) : a.base);
+        off += save; used.set(a.i, (used.get(a.i) || 0) + 1); used.set(b.i, (used.get(b.i) || 0) + 1);
+        // Show the saving on the cart line: on the cheaper item first (that's the "take 1"), any rest on the other one.
+        const onB = Math.min(save, b.base), onA = save - onB;
+        lineOff.set(b.i, (lineOff.get(b.i) || 0) + onB); if (onA) lineOff.set(a.i, (lineOff.get(a.i) || 0) + onA);
+        lineDeal.set(b.i, d); lineDeal.set(a.i, d);
+      }
       if (pairs && off > 0) { applied.push({ id: d.id, title: d.title, pairs, offCents: off }); total += off; }
       if (units.length % 2 === 1 && (!d.maxPairs || pairs < d.maxPairs)) waiting.push(d);
     }
-    return { offCents: total, applied, waiting, used };
+    return { offCents: total, applied, waiting, used, lineOff, lineDeal };
   }
   const fmtWhen = (v) => { const d = new Date(v), t = new Date(); const same = d.toDateString() === t.toDateString(); const tm = new Date(t); tm.setDate(t.getDate() + 1);
     return `${same ? 'Today' : d.toDateString() === tm.toDateString() ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${fmtTime(v)}`; };
@@ -474,6 +481,26 @@
   $('#dClose').onclick = closeDetail;
   scrim.onclick = () => { closeDetail(); closeChat(); };
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { closeDetail(); closeChat(); } });
+  // ---------- "Add stamp": put one of TODAY's orders on a customer's stamp card (they forgot to give their number)
+  const canStamp = (o) => { const c = catalog?.loyalty || {};
+    return !!(c.enabled && can('pos') && !o.loyaltyPhone && o.status !== 'cancelled' && cafeDate(new Date(o.createdAt), 4) === cafeDate(new Date(), 4) && loyEarn(c, o.items) > 0); };
+  const stampBox = (o) => canStamp(o) ? `<form class="stamp-add" data-stamp-add="${esc(o.id)}">
+      <label>🎟️ Customer forgot their stamp? Add it here <small>(today's orders only · ${catalog.loyalty.perDay ? `${catalog.loyalty.perDay} per day per number` : 'no daily limit'})</small></label>
+      <div class="row"><input inputmode="tel" maxlength="16" placeholder="Mobile number, e.g. 0917 123 4567" aria-label="Customer mobile number"><button class="btn" type="submit">Add stamp</button></div>
+      <p class="note" data-stamp-msg></p></form>` : '';
+  document.addEventListener('submit', async (e) => {
+    const f = e.target.closest('[data-stamp-add]'); if (!f) return;
+    e.preventDefault();
+    const btn = f.querySelector('button'), msg = f.querySelector('[data-stamp-msg]'); btn.disabled = true; msg.textContent = 'Adding…';
+    try {
+      const r = await api('/api/staff/loyalty', { method: 'POST', body: { orderId: f.dataset.stampAdd, phone: f.querySelector('input').value } });
+      cache.set(r.order.id, r.order);
+      const c = r.card, need = c.needed;
+      toast(r.paid ? `🎟️ Stamp added: ${c.stamps} of ${need}${c.ready ? ' · free item ready!' : ''}` : `🎟️ Stamp saved: it counts once the order is paid`);
+      if (detailId === r.order.id) renderDetail();
+      if ($('#rcptDlg').open) showReceipt(r.order);
+    } catch (err) { msg.textContent = err.message; msg.classList.add('err'); btn.disabled = false; }
+  });
   function renderDetail() {
     const o = cache.get(detailId); if (!o) return;
     const qr = o.paymentMethod === 'qrph', online = o.source !== 'pos' && ['gcash', 'paymaya', 'card'].includes(o.paymentMethod), b = busy.has(o.id);
@@ -490,6 +517,7 @@
         ${(o.payments || []).length > 1 ? `<dt>Paid with</dt><dd>${o.payments.map(p => `${PAY[p.method]} ${money(p.cents)}${p.ref ? ` <small>(${esc(p.ref)})</small>` : ''}`).join('<br>')}</dd>` : ''}
         ${o.staffName ? `<dt>Staff</dt><dd>${esc(o.staffName)}</dd>` : ''}
         ${o.paidAt ? `<dt>Paid at</dt><dd>${fmtDT(o.paidAt)}</dd>` : ''}
+        ${o.loyaltyPhone ? `<dt>Stamp card</dt><dd>🎟️ <span class="mono">${esc(o.loyaltyPhone)}</span>${o.loyaltyEarn ? ` · +${o.loyaltyEarn} stamp${o.loyaltyEarn === 1 ? '' : 's'}` : ''}${o.loyaltyUsed ? ' · free item used' : ''}</dd>` : ''}
         ${o.discountCents ? `<dt>Discount</dt><dd>${esc(o.discountType)} · −${money(o.discountCents)}</dd>` : ''}
         ${o.tenderedCents != null ? `<dt>Cash</dt><dd>${money(o.tenderedCents)} received · ${money(o.changeCents)} change</dd>` : ''}
         ${o.reference ? `<dt>${qr ? 'Customer ref' : 'Reference'}</dt><dd class="mono">${esc(o.reference)}</dd>` : ''}
@@ -500,7 +528,8 @@
       ${o.note ? `<div class="nt" style="background:var(--surface);padding:10px 12px;border-radius:10px">“${esc(o.note)}”</div>` : ''}
       ${o.deliveryFeeCents ? `<div class="r2"><span>Delivery fee</span><span>${money(o.deliveryFeeCents)}</span></div>` : ''}
       <div class="total">Total <span>${money(o.totalCents)}</span></div>
-      <div class="row-btns"><button class="btn ghost" type="button" data-chat="${esc(o.id)}">💬 Messages${o.unread ? ` (${o.unread})` : ''}</button>${o.paymentStatus === 'paid' ? `<button class="btn ghost" type="button" id="dReceipt">Receipt</button>` : ''}</div>`;
+      <div class="row-btns"><button class="btn ghost" type="button" data-chat="${esc(o.id)}">💬 Messages${o.unread ? ` (${o.unread})` : ''}</button>${o.paymentStatus === 'paid' ? `<button class="btn ghost" type="button" id="dReceipt">Receipt</button>` : ''}</div>
+      ${stampBox(o)}`;
     const rb = $('#dReceipt'); if (rb) rb.onclick = () => showReceipt(o);
     const acts = [], nx = NEXT(o);
     const onBoard = qr ? o.paymentStatus === 'paid' : !online || ['paid', 'refunded'].includes(o.paymentStatus);
@@ -615,13 +644,17 @@
   // "Add something?" suggestions: same order as the website (lib/upsell.js): your rules, bought together, then a popular pastry / drink.
   function suggestFor(lines, up, max = 3) {
     if (!up?.enabled || !lines.length) return [];
-    const P = prodById(), inCart = new Set(lines.map(l => l.id)), out = [];
-    const push = (id, why) => { const p = P[id]; if (p && p.price != null && !p.soldOut && !inCart.has(id) && !out.some(o => o.id === id)) out.push({ id, why }); };
+    const P = prodById(), inCart = new Set(lines.map(l => l.id)), out = [], only = up.onlyCats || [];
+    const BUNDLE_NAME = /\bb1t1\b|buy\s*1\s*take\s*1|\bbundle\b|\bpromo\b/i; // promo bundles made as their own product are never suggested
+    const push = (id, why) => { const p = P[id]; if (p && p.price != null && !p.soldOut && !inCart.has(id) && !BUNDLE_NAME.test(p.name) && (!only.length || only.includes(p.cat)) && !out.some(o => o.id === id)) out.push({ id, why }); };
     for (const r of up.rules || []) if (lines.some(l => r.whenIds.includes(l.id) || r.whenCats.includes(P[l.id]?.cat))) r.suggestIds.forEach(id => push(id, r.text));
     if (up.auto) lines.forEach(l => (up.pairs?.[l.id] || []).forEach(id => push(id, 'Often ordered together')));
     const kinds = new Set(lines.map(l => kindOf(P[l.id]?.cat))), order = [...(up.popular || []), ...catalog.products.map(p => p.id)];
-    if (kinds.has('drink') && !kinds.has('food')) order.filter(id => P[id]?.cat === 'pastries').forEach(id => push(id, 'Great with a drink'));
-    if (kinds.has('food') && !kinds.has('drink')) order.filter(id => kindOf(P[id]?.cat) === 'drink').forEach(id => push(id, 'Something to drink?'));
+    if (only.length) order.forEach(id => push(id, ''));
+    else {
+      if (kinds.has('drink') && !kinds.has('food')) order.filter(id => P[id]?.cat === 'pastries').forEach(id => push(id, 'Great with a drink'));
+      if (kinds.has('food') && !kinds.has('drink')) order.filter(id => kindOf(P[id]?.cat) === 'drink').forEach(id => push(id, 'Something to drink?'));
+    }
     return out.slice(0, max);
   }
   const codeOff = (c, sub, lines = [], used = null) => { if (!c || sub < (c.minCents || 0)) return 0; if (c.kind === 'bogo') return Math.min(bogoReward(c.bogo, lines, used).offCents, sub); let off = Math.round((c.kind === 'pct' ? (sub * c.value) / 100 : c.value) / 100) * 100; if (c.kind === 'pct' && c.maxOffCents) off = Math.min(off, c.maxOffCents); return Math.max(0, Math.min(off, sub)); };
@@ -726,11 +759,13 @@
     if (!me) return;
     ls.set('dd-pos-ticket', ticketLines);
     const P = prodById(), A = addonById();
-    $('#posLines').innerHTML = ticketLines.length ? ticketLines.map((l, i) => `
-      <div class="line"><b>${esc(P[l.id]?.name || l.id)}</b><span class="lp">${money(posUnit(l) * l.qty)}</span>
-        <small>${esc(l.opts ? [l.opts.sweet + '% sweet', l.opts.ice].filter(Boolean).join(' · ') : '') || '—'}</small>
+    const tl = ticketLines.map(l => ({ id: l.id, qty: l.qty, unitCents: posUnit(l), addons: (l.addons || []).map(id => ({ cents: A[id]?.price || 0 })) }));
+    const ld = applyDeals(tl, (catalog.deals || []).filter(x => dealOn(x))); // to show each line's deal saving
+    $('#posLines').innerHTML = ticketLines.length ? ticketLines.map((l, i) => { const full = posUnit(l) * l.qty, save = ld.lineOff.get(i) || 0, dl = ld.lineDeal.get(i); return `
+      <div class="line"><b>${esc(P[l.id]?.name || l.id)}</b><span class="lp">${save ? `<s>${money(full)}</s> ${money(full - save)}` : money(full)}</span>
+        <small>${esc(l.opts ? [l.opts.sweet + '% sweet', l.opts.ice].filter(Boolean).join(' · ') : '') || '—'}${dl ? `<br><b class="deal-t">🎉 ${esc(dl.title)}${save ? ` −${money(save)}` : ''}</b>` : ''}</small>
         <div class="stepper"><button type="button" data-tq="${i}" data-d="-1" aria-label="Fewer">−</button><span>${l.qty}</span><button type="button" data-tq="${i}" data-d="1" aria-label="More">+</button></div>
-        ${(l.addons || []).length ? `<span class="addons">+ ${l.addons.map(id => `${esc(A[id]?.name || id)} ${money(A[id]?.price || 0)}`).join(', ')}</span>` : ''}</div>`).join('')
+        ${(l.addons || []).length ? `<span class="addons">+ ${l.addons.map(id => `${esc(A[id]?.name || id)} ${money(A[id]?.price || 0)}`).join(', ')}</span>` : ''}</div>`; }).join('')
       : '<div class="empty">Tap items on the left to start a sale.</div>';
     const t = posTotals(), d = $('#posDisc').value;
     $('#posDiscIdF').hidden = !(d === 'senior' || d === 'pwd');
@@ -817,7 +852,9 @@
       <div class="r tot"><span>TOTAL</span><span>${money(o.totalCents)}</span></div>
       ${(o.payments || []).map(p => `<div class="r"><span>${PAY[p.method] || p.method}${p.ref ? ' · ref ' + esc(p.ref) : ''}</span><span>${money(p.cents)}</span></div>`).join('')}
       ${o.tenderedCents != null ? `<div class="r"><span>Cash received</span><span>${money(o.tenderedCents)}</span></div><div class="r"><span>Change</span><span>${money(o.changeCents)}</span></div>` : ''}<hr>
+      ${o.loyaltyPhone ? `<p class="c">🎟️ Stamp card ${esc(o.loyaltyPhone.slice(0, 4))}•••${esc(o.loyaltyPhone.slice(-4))}${o.loyaltyEarn ? ` · +${o.loyaltyEarn} stamp${o.loyaltyEarn === 1 ? '' : 's'}` : ''}</p>` : ''}
       <p class="c">Thank you! See you again.<br>This is not an official receipt.</p>`;
+    $('#rcptStamp').innerHTML = stampBox(o);
     if (!$('#rcptDlg').open) $('#rcptDlg').showModal();
   }
   const printDialog = (dlg) => { document.body.classList.add('printing'); dlg.classList.add('print-me'); window.print(); setTimeout(() => { document.body.classList.remove('printing'); dlg.classList.remove('print-me'); }, 500); };
@@ -1619,10 +1656,12 @@
   };
 
   // ===================================================================== CART SUGGESTION SETTINGS
-  let upDraft = null, upPickers = [];
+  let upDraft = null, upPickers = [], upOnly = null;
   function renderUpsellBox() {
     const U = settings.upsell || {};
     $('#upOn').checked = U.enabled !== false; $('#upAuto').checked = !!U.auto;
+    upOnly ||= [...(U.onlyCats || [])];
+    $('#upOnly').innerHTML = Object.entries(CAT).map(([k, v]) => `<button type="button" data-uonly="${k}" aria-pressed="${upOnly.includes(k)}">${esc(v)}</button>`).join('');
     if (upDraft) return;
     upDraft = JSON.parse(JSON.stringify(U.rules || []));
     drawUpRules();
@@ -1650,10 +1689,11 @@
   $('#upAdd').onclick = () => { upPickers.forEach((pk, j) => { upDraft[j].suggestIds = [...pk.set]; }); upDraft.push({ whenCats: [], whenIds: [], suggestIds: [], text: '', active: true }); upPickers = []; drawUpRules(); };
   const saveUpsell = async (rulesToo = true) => {
     upPickers.forEach((pk, j) => { if (upDraft[j]) upDraft[j].suggestIds = [...pk.set]; });
-    const body = { enabled: $('#upOn').checked, auto: $('#upAuto').checked, ...(rulesToo ? { rules: upDraft } : {}) };
+    const body = { enabled: $('#upOn').checked, auto: $('#upAuto').checked, onlyCats: upOnly || [], ...(rulesToo ? { rules: upDraft } : {}) };
     if (await saveSettings({ upsell: body }, 'Suggestions saved')) { if (rulesToo) { upDraft = null; upPickers = []; renderUpsellBox(); } loadCatalog(); }
   };
   $('#upSave').onclick = () => saveUpsell(true);
+  $('#upOnly').addEventListener('click', e => { const b = e.target.closest('[data-uonly]'); if (!b) return; const k = b.dataset.uonly; upOnly = upOnly.includes(k) ? upOnly.filter(x => x !== k) : [...upOnly, k]; b.setAttribute('aria-pressed', upOnly.includes(k)); saveUpsell(false); });
   $('#upOn').onchange = () => saveUpsell(false); $('#upAuto').onchange = () => saveUpsell(false);
 
   // ===================================================================== NIGHTLY SUMMARY
@@ -1684,7 +1724,7 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
-    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand',
+    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order',
     'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',

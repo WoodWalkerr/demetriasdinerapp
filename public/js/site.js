@@ -369,18 +369,25 @@
   const dealsAt = (t = new Date()) => (cat.deals || []).filter(d => dealOn(d, t));
   const dealFor = (it, t) => dealsAt(t).find(d => d.productIds.includes(it.id));
   function applyDeals(lines, deals) {
-    const used = new Map(), applied = [], waiting = []; let total = 0;
+    const used = new Map(), applied = [], waiting = [], lineOff = new Map(), lineDeal = new Map(); let total = 0;
     for (const d of deals) {
       const units = [];
       lines.forEach((l, i) => { if (!d.productIds.includes(l.id)) return; const base = l.unitCents - (l.addons || []).reduce((a, x) => a + (x.cents || 0), 0); for (let k = used.get(i) || 0; k < l.qty; k++) units.push({ i, base }); });
       units.sort((a, b) => b.base - a.base);
       let pairs = Math.floor(units.length / 2); if (d.maxPairs) pairs = Math.min(pairs, d.maxPairs);
       let off = 0;
-      for (let p = 0; p < pairs; p++) { const a = units[2 * p], b = units[2 * p + 1]; off += a.base + b.base - (d.pairCents != null ? Math.min(d.pairCents, a.base + b.base) : a.base); used.set(a.i, (used.get(a.i) || 0) + 1); used.set(b.i, (used.get(b.i) || 0) + 1); }
+      for (let p = 0; p < pairs; p++) {
+        const a = units[2 * p], b = units[2 * p + 1], save = a.base + b.base - (d.pairCents != null ? Math.min(d.pairCents, a.base + b.base) : a.base);
+        off += save; used.set(a.i, (used.get(a.i) || 0) + 1); used.set(b.i, (used.get(b.i) || 0) + 1);
+        // Show the saving on the cart line: on the cheaper item first (that's the "take 1"), any rest on the other one.
+        const onB = Math.min(save, b.base), onA = save - onB;
+        lineOff.set(b.i, (lineOff.get(b.i) || 0) + onB); if (onA) lineOff.set(a.i, (lineOff.get(a.i) || 0) + onA);
+        lineDeal.set(b.i, d); lineDeal.set(a.i, d);
+      }
       if (pairs && off > 0) { applied.push({ id: d.id, title: d.title, pairs, offCents: off }); total += off; }
       if (units.length % 2 === 1 && (!d.maxPairs || pairs < d.maxPairs)) waiting.push(d);
     }
-    return { offCents: total, applied, waiting, used };
+    return { offCents: total, applied, waiting, used, lineOff, lineDeal };
   }
   const dealWhat = (d) => (d.pairCents != null ? `2 for ${pesos(d.pairCents)}` : 'the 2nd one is free');
   const promoSig = () => (cat.promos || []).filter(p => promoOn(p, new Date())).map(p => p.id).join() + '|' + dealsAt().map(d => d.id).join();
@@ -665,16 +672,23 @@
   // ---------- cart ----------
   const setNote = (t, err) => { const n = $('#orderNote'); n.textContent = t; n.classList.toggle('err', !!err); };
   function renderCart() {
-    cart = cart.filter(l => byId[l.id] && byId[l.id].price != null);
-    ls.set('dd-cart2', cart);
+    // Only drop items that are gone (or have no price) once the REAL menu has loaded. Before that, the page
+    // shows a built-in copy of the menu, and checking against it would wipe a returning customer's cart.
+    if (apiState === 'ready') { cart = cart.filter(l => byId[l.id] && byId[l.id].price != null); ls.set('dd-cart2', cart); }
     $('#fabCount').textContent = cart.reduce((a, l) => a + l.qty, 0);
-    $('#lines').innerHTML = cart.length ? cart.map((l, i) => {
+    const known = (l) => byId[l.id] && byId[l.id].price != null;
+    const lineDeals = cart.length ? applyDeals(pricedLines(), dealsAt(whenAt() || new Date())) : null; // to show each line's deal saving
+    $('#lines').innerHTML = !cart.length ? `<div class="empty">Nothing here yet. Tap <b>Add +</b> on anything from the menu.</div>`
+      : !cart.some(known) ? (apiState === 'down' ? "<div class=\"empty\">You're offline. Your order is saved and shows again when you're back online.</div>" : '<div class="empty">Loading your order…</div>')
+      : cart.map((l, i) => {
+      if (!known(l)) return ''; // still loading this item's details
       const it = byId[l.id], adds = (l.addons || []).map(id => addonById[id]).filter(Boolean);
-      return `<div class="line"><b>${esc(it.name)}</b><span class="lp">${pesos(unitOf(l) * l.qty)}</span>
-        <small>${esc(optsLabel(l.opts)) || 'As served'}${it.soldOut ? ' · <b style="color:var(--danger)">sold out</b>' : ''}${(() => { const pr = promoFor(it, whenAt() || new Date()); return pr ? ` · <b class="promo-t">${esc(pr.promo.name)} −${pesos(pr.off)}</b>` : ''; })()}</small>
+      const full = unitOf(l) * l.qty, save = lineDeals?.lineOff.get(i) || 0, dl = lineDeals?.lineDeal.get(i);
+      return `<div class="line${save ? ' on-deal' : ''}"><b>${esc(it.name)}</b><span class="lp">${save ? `<s>${pesos(full)}</s> ${pesos(full - save)}` : pesos(full)}</span>
+        <small>${esc(optsLabel(l.opts)) || 'As served'}${it.soldOut ? ' · <b style="color:var(--danger)">sold out</b>' : ''}${(() => { const pr = promoFor(it, whenAt() || new Date()); return pr ? ` · <b class="promo-t">${esc(pr.promo.name)} −${pesos(pr.off)}</b>` : ''; })()}${dl ? `<br><b class="deal-t">🎉 ${esc(dl.title)}: ${esc(dealWhat(dl))}${save ? ` · you save ${pesos(save)}` : ''}</b>` : ''}</small>
         <div class="stepper"><button type="button" data-q="${i}" data-d="-1" aria-label="Fewer">−</button><span>${l.qty}</span><button type="button" data-q="${i}" data-d="1" aria-label="More">+</button></div>
         ${adds.length ? `<span class="addons">+ ${adds.map(a => `${esc(a.name)} (${pesos(a.price)})`).join(', ')}</span>` : ''}</div>`;
-    }).join('') : `<div class="empty">Nothing here yet. Tap <b>Add +</b> on anything from the menu.</div>`;
+    }).join('');
     const at = whenAt() || new Date();
     const { pl, deal, loy, gross, sub, disc } = cartMath(at); // deals, then the stamp card, then the promo code
     const fee = deliveryFee(), del = isDelivery();
@@ -866,18 +880,70 @@
 
   // ---------- stamp card in the cart ----------
   const stampDots = (n, need) => `<div class="stamps">${Array.from({ length: need }, (_, i) => `<i class="${i < n ? 'on' : ''}">${i < n ? '🐾' : ''}</i>`).join('')}<i class="gift">🎁</i></div>`;
+  // One card design for the cart and "My stamps": paws, "X more to a free drink", and today's stamp in plain words.
+  const rewardWord = (cfg) => (cfg.ids?.length || cfg.cats?.length ? 'item' : 'drink');
+  const maskP = (p) => (p ? `${p.slice(0, 4)}•••${p.slice(-4)}` : '');
+  function stampCardHtml(c, cfg, adds) {
+    const need = cfg.needed, have = Math.min(c.stamps, need), left = Math.max(0, need - c.stamps), w = rewardWord(cfg);
+    let today;
+    if (c.ready) today = cfg.online ? `Tick <b>Use my free ${w}</b> below, or show this number at the counter.` : `Show this number at the counter to get it. 🎉`;
+    else if (adds > 0) today = `✅ This order adds <b>${adds} stamp${adds === 1 ? '' : 's'}</b>${c.stamps + adds >= need ? ` → your <b>free ${w}</b> is ready next time!` : ''} (counted once it's paid).`;
+    else if (c.todayLeft === 0) today = c.pending ? `⏳ Today's stamp is waiting: it's added once your order is paid.` : `✅ You already got today's stamp. Come back tomorrow for the next one!`;
+    else today = `☕ Order a ${w === 'drink' ? 'drink' : 'qualifying item'} today to get today's stamp.`;
+    return `<div class="scard ${c.ready ? 'ready' : ''}">
+      <div class="scard-top"><b>${esc(cfg.name)}</b><span>${esc(maskP(c.phone))}</span></div>
+      ${stampDots(have, need)}
+      <p class="scard-main">${c.ready ? `🎉 <b>Your free ${w} is ready!</b>` : `<b>${c.stamps} of ${need}</b> stamps · <b>${left} more</b> to a free ${w}`}</p>
+      <p class="scard-today">${today}</p>
+    </div>`;
+  }
   function renderStamp(loy) {
     const cfg = cat.loyalty || {};
-    $('#stampF').hidden = !cfg.enabled; $('#visitStamps').hidden = !cfg.enabled;
+    $('#stampF').hidden = !cfg.enabled; $('#visitStamps').hidden = !cfg.enabled; $('.nav-stamps').hidden = !cfg.enabled; $('.stamps-mini').hidden = !cfg.enabled;
     if (!cfg.enabled) return;
-    $('#stampName').textContent = cfg.name;
+    const w = rewardWord(cfg);
+    $('#stampHow').innerHTML = `Type your mobile number: <b>${cfg.perDay ? `${cfg.perDay === 1 ? '1 stamp' : cfg.perDay + ' stamps'} a day` : '1 stamp per ' + w}</b> when you order a ${w === 'drink' ? 'drink' : 'qualifying item'}. <b>${cfg.needed} stamps = a free ${w}!</b>`;
     if (document.activeElement !== $('#o-stamp') && !$('#o-stamp').value && stamp.phone) $('#o-stamp').value = stamp.phone;
+    $('#stampCheck').textContent = stamp.card ? 'Change' : 'Add';
     const c = stamp.card, box = $('#stampInfo');
     box.hidden = !c; if (!c) return;
-    const need = cfg.needed, after = Math.min(need, c.stamps + (loy?.earn || 0));
-    box.innerHTML = stampDots(Math.min(c.stamps, need), need) + `<p>${c.ready ? `<b>🎉 You've earned a free ${cfg.ids?.length || cfg.cats?.length ? 'item' : 'drink'}!</b>` : `<b>${c.stamps} of ${need}</b> stamps`}${c.pending ? ` · ${c.pending} more once paid` : ''}${!c.ready && loy?.earn ? ` · this order adds <b>${loy.earn}</b>${after >= need ? ' → <b>free one next time!</b>' : ''}` : ''}${!c.ready && !loy?.earn && c.todayLeft === 0 && cart.length ? " · <b>today's stamp is already in</b>, come back tomorrow for the next one!" : ''}</p>${c.perDay && !c.ready ? `<small>${c.perDay === 1 ? '1 stamp' : c.perDay + ' stamps'} per day.</small>` : ''}`
-      + (c.ready ? (cfg.online ? `<label class="switchrow sm"><input type="checkbox" class="toggle" id="stampUse" ${stamp.redeem ? 'checked' : ''}> Use it on this order${loy?.off ? ` (−${pesos(loy.off)})` : ''}</label>` : '<small>Show this number at the counter to claim it.</small>') : '');
+    box.innerHTML = stampCardHtml(c, cfg, c.ready ? 0 : (loy?.earn || 0))
+      + (c.ready && cfg.online ? `<label class="switchrow sm use-free"><input type="checkbox" class="toggle" id="stampUse" ${stamp.redeem ? 'checked' : ''}> Use my free ${w} on this order${loy?.off ? ` (−${pesos(loy.off)})` : ''}</label>` : '');
   }
+  // ---------- "My stamps" window: how it works + check your card
+  function stampSteps(cfg) {
+    const w = rewardWord(cfg), daily = cfg.perDay ? `${cfg.perDay === 1 ? '1 stamp' : cfg.perDay + ' stamps'} per day` : `1 stamp per ${w}`;
+    return [`Order a ${w === 'drink' ? 'drink' : 'qualifying item'} and type your <b>mobile number</b> in the cart (or tell the cashier).`,
+      `You get <b>${daily}</b>. It's added once your order is <b>paid</b>.`,
+      `Collect <b>${cfg.needed} stamps</b> → your next ${w} is <b>free</b>${cfg.maxCents ? ` (up to ${pesos(cfg.maxCents)})` : ''}. ${cfg.online ? 'Use it in the cart or at the counter.' : 'Claim it at the counter.'}`,
+      `Forgot your number? Tap <b>Claim today's stamp</b> on today's order under <b>Your orders</b>. Stamps can only be claimed on the same day.`]
+      .map(x => `<li>${x}</li>`).join('');
+  }
+  function openStamps() {
+    const cfg = cat.loyalty || {}; if (!cfg.enabled) return;
+    $('#sdlgName').textContent = cfg.name; $('#sdlgSteps').innerHTML = stampSteps(cfg);
+    if (!$('#sdlgPhone').value && stamp.phone) $('#sdlgPhone').value = stamp.phone;
+    $('#sdlgCard').innerHTML = stamp.card ? stampCardHtml(stamp.card, cfg, 0) : '';
+    $('#stampDlg').showModal();
+    if (stamp.phone && !stamp.card) sdlgCheck();
+  }
+  async function sdlgCheck() {
+    const v = $('#sdlgPhone').value.trim(); if (!v) return $('#sdlgPhone').focus();
+    $('#sdlgCheck').disabled = true;
+    try {
+      const c = await api('/api/orders?stamps=' + encodeURIComponent(v));
+      const phone = v.replace(/\D/g, '').replace(/^63/, '0').replace(/^9/, '09');
+      stamp = { ...stamp, phone, card: { ...c, phone } }; ls.set('dd-stamp-phone', phone); $('#sdlgPhone').value = phone; $('#o-stamp').value = phone;
+      $('#sdlgCard').innerHTML = stampCardHtml(stamp.card, cat.loyalty, 0) + (c.stamps === 0 && !c.pending ? '<p class="hint-sm">No stamps yet on this number. Your first one comes with your next order!</p>' : '');
+      renderCart();
+    } catch (err) { $('#sdlgCard').innerHTML = `<p class="err-t">${esc(err.message)}</p>`; }
+    $('#sdlgCheck').disabled = false;
+  }
+  $('#sdlgCheck').onclick = sdlgCheck;
+  $('#sdlgPhone').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); sdlgCheck(); } });
+  $('#sdlgClose').onclick = () => $('#stampDlg').close();
+  $('#stampDlg').addEventListener('click', e => { if (e.target === $('#stampDlg')) $('#stampDlg').close(); });
+  document.addEventListener('click', e => { if (e.target.closest('[data-open-stamps], #navStamps, #visitStamps')) { e.preventDefault(); openStamps(); } });
   async function checkStamp(quiet, keepNote) {
     const v = $('#o-stamp').value.trim() || stamp.phone; if (!v || !cat.loyalty?.enabled) return;
     try {
@@ -891,27 +957,34 @@
   $('#o-stamp').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); checkStamp(false); } });
   $('#o-stamp').addEventListener('input', () => { if (stamp.card) { stamp.card = null; stamp.redeem = false; renderCart(); } });
   $('#stampInfo').addEventListener('change', e => { if (e.target.id === 'stampUse') { stamp.redeem = e.target.checked; renderCart(); } });
-  $('#visitStamps').onclick = () => { openDrawer(); setTimeout(() => { $('#o-stamp').scrollIntoView({ block: 'center' }); $('#o-stamp').focus(); }, 300); };
+
 
   // ---------- "Add something?" suggestions in the cart (same order as the POS: lib/upsell.js) ----------
-  function suggestions(max = 2) {
+  // Promo bundles made as their own product ("Brownies (b1t1)", "… bundle") are never suggested.
+  const BUNDLE_NAME = /\bb1t1\b|buy\s*1\s*take\s*1|\bbundle\b|\bpromo\b/i;
+  function suggestions(max = 10) {
     const up = cat.upsell; if (!up?.enabled || !cart.length) return [];
-    const inCart = new Set(cart.map(l => l.id)), out = [];
-    const push = (id, why) => { const it = byId[id]; if (it && it.price != null && !it.soldOut && !inCart.has(id) && !out.some(o => o.id === id)) out.push({ id, why }); };
+    const inCart = new Set(cart.map(l => l.id)), out = [], only = up.onlyCats || [];
+    const push = (id, why) => { const it = byId[id]; if (it && it.price != null && !it.soldOut && !inCart.has(id) && !BUNDLE_NAME.test(it.name) && (!only.length || only.includes(it.cat)) && !out.some(o => o.id === id)) out.push({ id, why }); };
     for (const r of up.rules || []) if (cart.some(l => r.whenIds.includes(l.id) || r.whenCats.includes(byId[l.id]?.cat))) r.suggestIds.forEach(id => push(id, r.text));
     if (up.auto) cart.forEach(l => (up.pairs?.[l.id] || []).forEach(id => push(id, 'Often ordered together')));
     const kinds = new Set(cart.map(l => kindOf(byId[l.id]?.cat))), order = [...(up.popular || []), ...cat.items.map(i => i.id)];
-    if (kinds.has('drink') && !kinds.has('food')) order.filter(id => byId[id]?.cat === 'pastries').forEach(id => push(id, 'Great with your drink'));
-    if (kinds.has('food') && !kinds.has('drink')) order.filter(id => kindOf(byId[id]?.cat) === 'drink').forEach(id => push(id, 'Something to drink?'));
+    if (only.length) order.forEach(id => push(id, kinds.has('drink') ? 'Great with your drink' : '')); // best sellers first, then the menu order
+    else {
+      if (kinds.has('drink') && !kinds.has('food')) order.filter(id => byId[id]?.cat === 'pastries').forEach(id => push(id, 'Great with your drink'));
+      if (kinds.has('food') && !kinds.has('drink')) order.filter(id => kindOf(byId[id]?.cat) === 'drink').forEach(id => push(id, 'Something to drink?'));
+    }
     return out.slice(0, max);
   }
   function renderSuggest() {
-    const list = suggestions(2), box = $('#cartSuggest');
+    const list = suggestions(10), box = $('#cartSuggest');
+    const keep = box.querySelector('.sug-row')?.scrollLeft || 0; // don't jump back to the start while scrolling
     box.hidden = !list.length;
-    box.innerHTML = list.length ? `<h4>Add something?</h4>` + list.map(x => { const it = byId[x.id], pr = promoFor(it);
+    box.innerHTML = list.length ? `<h4>Add something? <small>${list.length > 2 ? 'swipe for more →' : ''}</small></h4><div class="sug-row">` + list.map(x => { const it = byId[x.id], pr = promoFor(it);
       return `<div class="sug"><div class="sug-art">${it.img ? `<img src="${esc(it.img)}" alt="" loading="lazy">` : artFor(it)}</div>
-        <div class="sug-txt"><b>${esc(it.name)}</b><small>${esc(x.why || CAT_LABEL[it.cat] || '')}</small></div>
-        <button class="btn sm" type="button" data-sug="${esc(it.id)}">+ ${pesos(it.price - (pr?.off || 0))}</button></div>`; }).join('') : '';
+        <b>${esc(it.name)}</b>
+        <button class="btn sm" type="button" data-sug="${esc(it.id)}" aria-label="Add ${esc(it.name)}">+ ${pesos(it.price - (pr?.off || 0))}</button></div>`; }).join('') + '</div>' : '';
+    const row = box.querySelector('.sug-row'); if (row) row.scrollLeft = keep;
   }
   $('#cartSuggest').addEventListener('click', e => {
     const b = e.target.closest('[data-sug]'); if (!b) return;
@@ -973,6 +1046,10 @@
     const main = `<div class="ord-top"><b>#${esc(o.code)}</b><span class="pill ${pill}">${label}</span></div>
       ${st === 'cancelled' ? '' : `<div class="track"><i class="${n >= 1 ? 'on' : ''}"></i><i class="${n >= 2 ? 'on' : ''}"></i><i class="${n >= 3 ? 'on' : ''}"></i></div>`}
       <small>${(o.items || []).map(i => `${i.qty} × ${esc(i.name)}${(i.addons || []).length ? ' (+' + i.addons.map(a => esc(a.name)).join(', ') + ')' : ''}`).join(', ')} · ${pesos(o.totalCents || 0)}${o.discountCents ? ` (${o.promoCode ? esc(o.promoCode) + ' ' : ''}−${pesos(o.discountCents)})` : ''}${o.deliveryFeeCents ? ` incl. ${pesos(o.deliveryFeeCents)} delivery` : ''}<br>${esc(payLine)} · ${esc(o.pickupLabel || '')} · ordered ${fmtTime(o.at)}</small>
+      ${o.stampPhone ? `<small class="stamp-on">🎟️ On stamp card ${esc(o.stampPhone)}</small>` : ''}
+      ${o.stampable && cat.loyalty?.enabled ? (claimOpen.has(o.id)
+        ? `<div class="claim-row" data-claim="${esc(o.id)}"><input inputmode="tel" maxlength="16" enterkeyhint="done" placeholder="Your mobile number" value="${esc(stamp.phone || '')}" aria-label="Mobile number"><button class="btn sm" type="button" data-claim-go>Claim</button></div>`
+        : `<button class="btn ghost sm claim-btn" type="button" data-claim-open="${esc(o.id)}">🎟️ Claim today's stamp</button>`) : ''}
       ${st === 'done' && history.some(h => h.code === o.code) ? `<button class="linkbtn again-btn" type="button" data-again="${esc(o.code)}">↻ Order again</button>` : ''}
       ${online && ps === 'pending' && o.checkoutUrl ? `<a class="btn" href="${esc(o.checkoutUrl)}">Finish paying with ${PAY[o.paymentMethod]}</a>` : ''}
       ${qr && ['awaiting_proof', 'rejected'].includes(ps) && o.qr ? `<button class="btn" type="button" data-payqr="${esc(o.id)}">${ps === 'rejected' ? 'Send the correct reference' : 'Show QR and pay'}</button>` : ''}`;
@@ -1031,7 +1108,26 @@
       renderMine(); return true;
     } catch (err) { toast(err.message); if (input && !input.value) input.value = text; return false; }
   }
+  const claimOpen = new Set();
+  // (a <div>, not a <form>: "Your orders" sits inside the checkout form, and forms can't be nested)
+  $('#mine').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.closest('[data-claim] input')) { e.preventDefault(); claimStamp(e.target.closest('[data-claim]')); } });
+  async function claimStamp(f) {
+    const o = mine.find(x => x.id === f.dataset.claim); if (!o) return;
+    const btn = f.querySelector('button'); btn.disabled = true; btn.textContent = 'Claiming…';
+    try {
+      const r = await api(`/api/orders/${encodeURIComponent(o.id)}`, { method: 'POST', body: JSON.stringify({ token: o.token, action: 'stamp', phone: f.querySelector('input').value }) });
+      Object.assign(o, { stampPhone: r.stampPhone, stampable: r.stampable }); claimOpen.delete(o.id);
+      const phone = f.querySelector('input').value.replace(/\D/g, '').replace(/^63/, '0').replace(/^9/, '09');
+      stamp = { ...stamp, phone, card: null }; ls.set('dd-stamp-phone', phone); $('#o-stamp').value = phone;
+      toast(r.claimed.paid ? `🎟️ Stamp added! You now have ${r.claimed.stamps} of ${r.claimed.needed}.` : `🎟️ Stamp claimed! It's added once your order is paid.`);
+      checkStamp(true, true);
+    } catch (err) { toast(err.message); btn.disabled = false; btn.textContent = 'Claim'; return; }
+    renderMine();
+  }
   $('#mine').addEventListener('click', e => {
+    if (e.target.closest('[data-claim-go]')) return claimStamp(e.target.closest('[data-claim]'));
+    const co = e.target.closest('[data-claim-open]');
+    if (co) { claimOpen.add(co.dataset.claimOpen); renderMine(); $(`[data-claim="${CSS.escape(co.dataset.claimOpen)}"] input`)?.focus(); return; }
     const t = e.target.closest('[data-chat]');
     if (t) {
       const id = t.dataset.chat, opening = !openChats.has(id);
@@ -1072,7 +1168,7 @@
         const s = await api(`/api/orders/${encodeURIComponent(o.id)}?token=${encodeURIComponent(o.token)}`);
         const before = (o.messages || []).length;
         Object.assign(o, { code: s.code, status: s.status, items: s.items, totalCents: s.totalCents, deliveryFeeCents: s.deliveryFeeCents, orderType: s.orderType,
-          discountCents: s.discountCents, promoCode: s.promoCode, scheduledFor: s.scheduledFor,
+          discountCents: s.discountCents, promoCode: s.promoCode, scheduledFor: s.scheduledFor, stampPhone: s.stampPhone, stampable: s.stampable,
           pickupLabel: s.pickupLabel, paymentMethod: s.paymentMethod, paymentStatus: s.paymentStatus, checkoutUrl: s.checkoutUrl, reference: s.reference,
           qr: s.qr || o.qr, messages: s.messages, notify: true });
         const newStaff = s.messages.slice(before).filter(m => m.from === 'staff');
@@ -1125,30 +1221,77 @@
   });
 
   // ---------- pay with our own GCash / Maya QR ----------
+  // A personal GCash can't be opened with the amount filled in, so we make each step one tap:
+  // copy the amount, save the QR to Photos (GCash → Pay QR → Upload QR), open GCash, paste the reference back.
   const qrDlg = $('#qrDlg'); let qrOrder = null;
+  const onPhone = /iphone|ipad|ipod|android|mobile/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const onIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const amountText = (c) => { const v = (c || 0) / 100; return Number.isInteger(v) ? String(v) : v.toFixed(2); }; // "119" / "119.50": what GCash's amount box takes
   function openQr(o) {
     if (!o || !o.qr) return;
     qrOrder = o;
     $('#qrCode').textContent = `Order #${o.code}`;
-    $('#qrAmount').textContent = pesos(o.totalCents || 0);
+    $('#qrAmount').textContent = $('#qrAmount2').textContent = pesos(o.totalCents || 0);
     $('#qrImg').src = o.qr.image;
     $('#qrName').textContent = o.qr.name || '—';
     $('#qrNum').textContent = o.qr.number || '—';
     $('#qrCopy').hidden = !o.qr.number;
+    // phone: save + open GCash. Computer: just scan the QR on the screen with your phone.
+    qrDlg.classList.toggle('on-phone', onPhone);
+    $('#ps1t').textContent = onPhone ? 'Save our QR to your photos' : 'Scan this QR with GCash or Maya on your phone';
+    $('#qrSave').hidden = $('#qrSaveHint').hidden = !onPhone;
+    $('#ps3n').textContent = onPhone ? '3' : '2'; $('#ps4n').textContent = onPhone ? '4' : '3';
+    $('#qrSave').textContent = '⬇️ Save QR to Photos'; $('#qrAmtCopy').textContent = 'Copy amount';
     $('#qrRef').value = '';
     $('#qrNote').textContent = o.paymentStatus === 'rejected' ? "We couldn't find that payment. Check the reference number and send it again." : '';
     $('#qrNote').classList.toggle('err', o.paymentStatus === 'rejected');
     if (!qrDlg.open) qrDlg.showModal();
   }
   $('#qrClose').onclick = () => { qrDlg.close(); openDrawer(); };
-  $('#qrCopy').onclick = async () => {
-    try { await navigator.clipboard.writeText($('#qrNum').textContent.replace(/\s/g, '')); toast('Number copied'); }
-    catch { toast('Long-press the number to copy it'); }
+  const copyText = async (t, btn, done) => {
+    try { await navigator.clipboard.writeText(t); }
+    catch { const i = document.createElement('textarea'); i.value = t; i.setAttribute('readonly', ''); i.style.position = 'fixed'; i.style.opacity = '0'; document.body.append(i); i.select(); try { document.execCommand('copy'); } catch {} i.remove(); }
+    const was = btn.textContent; btn.textContent = done; setTimeout(() => { btn.textContent = was; }, 2200);
   };
+  $('#qrCopy').onclick = () => copyText($('#qrNum').textContent.replace(/\s/g, ''), $('#qrCopy'), 'Copied ✓');
+  $('#qrAmtCopy').onclick = () => { if (qrOrder) { copyText(amountText(qrOrder.totalCents), $('#qrAmtCopy'), 'Copied ✓'); toast(`Amount ${amountText(qrOrder.totalCents)} copied`); } };
+  // Save the QR: the phone's share sheet ("Save Image") where it works, or a normal download
+  $('#qrSave').onclick = async () => {
+    const btn = $('#qrSave');
+    try {
+      const blob = await (await fetch($('#qrImg').src)).blob();
+      const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+      const file = new File([blob], `demetrias-gcash-qr.${ext}`, { type: blob.type || 'image/png' });
+      if (navigator.canShare?.({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); btn.textContent = '✓ Saved? Now open GCash'; return; }
+        catch (e) { if (e.name === 'AbortError') return; }
+      }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      btn.textContent = '✓ Saved to Downloads/Photos';
+    } catch { toast('Press and hold the QR, then tap Save to Photos.'); }
+  };
+  // Open the GCash app (it can't fill in the amount or the QR; the steps say what to tap)
+  $('#qrOpenG').onclick = () => {
+    const store = onIOS ? 'https://apps.apple.com/ph/app/gcash/id520020791' : 'https://play.google.com/store/apps/details?id=com.globe.gcash.android';
+    let left = false; const away = () => { if (document.hidden) left = true; };
+    document.addEventListener('visibilitychange', away);
+    setTimeout(() => { document.removeEventListener('visibilitychange', away); if (!left && !document.hidden) toast("Couldn't open GCash. Open it from your home screen."); }, 2500);
+    location.href = onIOS ? 'gcash://' : `intent://#Intent;package=com.globe.gcash.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;S.browser_fallback_url=${encodeURIComponent(store)};end`;
+  };
+  // Pasting a whole GCash message also works: we pick out the reference number.
+  const cleanRef = (t) => { const v = String(t || '').trim(); const m = v.match(/ref(?:erence)?\.?\s*(?:no\.?|number|#)?\s*[:.]?\s*([0-9][0-9 ]{7,20}[0-9])/i) || v.match(/\b(\d[\d ]{11,16}\d)\b/); return (m ? m[1] : v).replace(/\s+/g, ''); };
+  $('#qrRef').addEventListener('paste', e => { const t = e.clipboardData?.getData('text'); if (t && /\D{3,}/.test(t.trim())) { e.preventDefault(); $('#qrRef').value = cleanRef(t); } });
+  $('#qrPaste').onclick = async () => {
+    try { const t = await navigator.clipboard.readText(); if (t) { $('#qrRef').value = cleanRef(t); $('#qrNote').textContent = ''; $('#qrNote').classList.remove('err'); return; } } catch {}
+    $('#qrRef').focus(); toast('Press and hold the box, then tap Paste.');
+  };
+  // Back from GCash: jump to the reference box
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && qrDlg.open && !$('#qrRef').value) $('#ps4').scrollIntoView({ block: 'center', behavior: 'smooth' }); });
   $('#qrForm').addEventListener('submit', async e => {
     e.preventDefault();
-    const ref = $('#qrRef').value.replace(/\s+/g, '');
-    if (!ref) { $('#qrNote').textContent = 'Type the reference number from your GCash or Maya receipt.'; $('#qrNote').classList.add('err'); $('#qrRef').focus(); return; }
+    const ref = cleanRef($('#qrRef').value);
+    if (!ref) { $('#qrNote').textContent = 'Paste the reference number from your GCash or Maya receipt.'; $('#qrNote').classList.add('err'); $('#qrRef').focus(); return; }
     $('#qrSend').disabled = true;
     try {
       const s = await api(`/api/orders/${encodeURIComponent(qrOrder.id)}`, { method: 'POST', body: JSON.stringify({ token: qrOrder.token, action: 'reference', reference: ref }) });
@@ -1209,36 +1352,88 @@
   })();
 
   // ---------- install as an app ("Add to Home Screen") ----------
-  // Shown to returning customers (2nd visit, or after an order), never inside the installed app,
-  // and not again for 30 days after "Not now". Android/Chrome: real install button. iPhone: the steps.
+  // Every phone gets it: Android Chrome/Edge/Samsung show the real "Install" box; iPhones (Safari, Chrome, Edge…)
+  // get picture-free step-by-step instructions for their browser; Facebook/Messenger/Instagram/TikTok browsers
+  // can't install, so we explain how to open the page in Safari/Chrome (with a Copy link button).
+  // The bar shows on the first visit (after a few seconds), and again 7 days after "Not now".
+  // "📱 Get the app" buttons (menu bar, Visit us, footer) are always there until it's installed.
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
   }
+  const UA = navigator.userAgent;
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const isSafari = /safari/i.test(navigator.userAgent) && !/crios|fxios|edgios|chrome|android/i.test(navigator.userAgent);
+  const isIOS = /iphone|ipad|ipod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const isAndroid = /android/i.test(UA);
+  const inApp = /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Instagram|Line\/|TikTok|musical_ly|Bytedance|Snapchat|Twitter|; wv\)/i.test(UA);
+  const iosBrowser = /CriOS/i.test(UA) ? 'Chrome' : /EdgiOS/i.test(UA) ? 'Edge' : /FxiOS/i.test(UA) ? 'Firefox' : /OPiOS|OPT\//i.test(UA) ? 'Opera' : 'Safari';
+  const samsung = /SamsungBrowser/i.test(UA), andFirefox = isAndroid && /Firefox/i.test(UA);
+  const isPhone = isIOS || isAndroid || /mobile/i.test(UA);
   let installEvt = null;
   try { if (!sessionStorage.getItem('dd-visit')) { sessionStorage.setItem('dd-visit', '1'); ls.set('dd-visits', (ls.get('dd-visits', 0) || 0) + 1); } } catch {}
-  const installWanted = () => !standalone && (ls.get('dd-visits', 0) >= 2 || ls.get('dd-history', []).length > 0) && Date.now() - (ls.get('dd-install-later', 0) || 0) > 30 * 86400e3;
-  function offerInstall(after = 4000) {
-    if (!installWanted() || !(installEvt || (isIOS && isSafari))) return;
-    setTimeout(() => {
-      if (document.querySelector('dialog[open]') || drawer.classList.contains('open') || !installWanted()) return;
-      $('#installSub').textContent = isIOS && !installEvt ? 'Add it to your home screen: order in two taps. Free, no app store.' : 'Order in two taps from your home screen. Free, no app store.';
-      $('#installBtn').textContent = isIOS && !installEvt ? 'How?' : 'Install';
+  const canOffer = () => !standalone && (isPhone || !!installEvt);
+  const snoozed = () => Date.now() - (ls.get('dd-install-later', 0) || 0) < 7 * 86400e3;
+  const showButtons = () => document.querySelectorAll('.get-app').forEach(b => { (b.closest('.nav-app') || b).hidden = !canOffer(); });
+  function installSteps() {
+    const share = '<span class="ios-share" aria-hidden="true">⬆︎</span>';
+    if (inApp) return { title: 'Open in your browser first', copy: true, steps: [
+      `This page is open inside ${/Instagram/i.test(UA) ? 'Instagram' : /TikTok|musical_ly|Bytedance/i.test(UA) ? 'TikTok' : /Messenger|Orca/i.test(UA) ? 'Messenger' : 'Facebook'}, which can't add apps to your home screen.`,
+      `Tap the <b>⋯</b> (or <b>⋮</b>) menu at the top or bottom of the screen and choose <b>Open in ${isIOS ? 'Safari' : 'Chrome'}</b> (or <b>Open in browser</b>).`,
+      `No menu? Tap <b>Copy link</b> below, open <b>${isIOS ? 'Safari' : 'Chrome'}</b>, and paste it in the address bar.`,
+      `Then tap <b>📱 Get the app</b> again on our page.`] };
+    if (isIOS) {
+      if (iosBrowser === 'Safari') return { steps: [`Tap the <b>Share</b> button ${share} at the bottom of the screen (top right on iPad).`, 'Scroll down and tap <b>Add to Home Screen</b> ➕.', 'Tap <b>Add</b> (top right). The cat icon 🐱 is now on your home screen!'] };
+      if (iosBrowser === 'Chrome' || iosBrowser === 'Edge') return { copy: true, steps: [`Tap the <b>Share</b> button ${share} at the ${iosBrowser === 'Chrome' ? 'top right, next to the address bar' : 'bottom of the screen'}.`, 'Scroll down and tap <b>Add to Home Screen</b> ➕. (Don\'t see it? Update your iPhone, or open this page in <b>Safari</b>.)', 'Tap <b>Add</b>. The cat icon 🐱 is now on your home screen!'] };
+      return { copy: true, steps: ['On iPhone, this works best in <b>Safari</b>. Tap <b>Copy link</b> below, open <b>Safari</b>, and paste it.', `In Safari, tap <b>Share</b> ${share} → <b>Add to Home Screen</b> → <b>Add</b>.`] };
+    }
+    if (samsung) return { steps: ['Tap the <b>≡</b> menu at the bottom right.', 'Tap <b>Add page to</b> → <b>Home screen</b> (or <b>Install</b> if you see it).', 'Tap <b>Add</b>. The cat icon 🐱 is now on your home screen!'] };
+    if (andFirefox) return { steps: ['Tap the <b>⋮</b> menu.', 'Tap <b>Install</b> (or <b>Add to Home screen</b>).', 'Tap <b>Add</b>. The cat icon 🐱 is now on your home screen!'] };
+    if (isAndroid) return { steps: ['Tap the <b>⋮</b> menu at the top right of Chrome.', 'Tap <b>Add to Home screen</b> (or <b>Install app</b>).', 'Tap <b>Install</b> / <b>Add</b>. The cat icon 🐱 is now on your home screen!'] };
+    return { steps: ['Open this page on your phone.', 'iPhone: Safari → <b>Share</b> → <b>Add to Home Screen</b>. Android: Chrome → <b>⋮</b> → <b>Add to Home screen</b>.'] };
+  }
+  function openInstall() {
+    hideInstall();
+    if (installEvt) return nativeInstall();
+    const h = installSteps();
+    $('#iosTitle').textContent = h.title || "Add Demetria's to your home screen";
+    $('#instSteps').innerHTML = h.steps.map(x => `<li>${x}</li>`).join('');
+    $('#instCopy').hidden = !h.copy; $('#instUrl').value = location.origin + '/';
+    $('#iosDlg').showModal();
+  }
+  async function nativeInstall() {
+    const e = installEvt; installEvt = null; e.prompt();
+    const r = await e.userChoice.catch(() => ({}));
+    if (r.outcome !== 'accepted') ls.set('dd-install-later', Date.now());
+    showButtons();
+  }
+  function offerInstall(after = 8000) {
+    if (!canOffer() || snoozed()) return;
+    clearTimeout(offerInstall.t);
+    offerInstall.t = setTimeout(() => {
+      // wait politely while a pop-up, the cart, or a window is open
+      if (document.querySelector('dialog[open]') || drawer.classList.contains('open')) return offerInstall(5000);
+      if (!canOffer() || snoozed()) return;
+      $('#installSub').textContent = installEvt ? 'Order in two taps from your home screen. Free, no app store.' : inApp ? 'Open this page in your browser to add it to your home screen.' : 'Put the cat icon on your home screen: order in two taps. Free, no app store.';
+      $('#installBtn').textContent = installEvt ? 'Install' : 'Show me how';
       $('#installBar').hidden = false; requestAnimationFrame(() => $('#installBar').classList.add('show'));
     }, after);
   }
-  const hideInstall = () => { $('#installBar').classList.remove('show'); setTimeout(() => { $('#installBar').hidden = true; }, 300); };
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; offerInstall(6000); });
-  window.addEventListener('appinstalled', () => { installEvt = null; hideInstall(); toast("Demetria's is on your home screen 🐱"); });
-  $('#installBtn').onclick = async () => {
-    if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice.catch(() => ({})); installEvt = null; hideInstall(); if (r.outcome !== 'accepted') ls.set('dd-install-later', Date.now()); }
-    else { hideInstall(); $('#iosDlg').showModal(); }
-  };
+  function hideInstall() { $('#installBar').classList.remove('show'); setTimeout(() => { $('#installBar').hidden = true; }, 300); }
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; showButtons(); offerInstall(6000); });
+  window.addEventListener('appinstalled', () => { installEvt = null; hideInstall(); ls.set('dd-installed', 1); document.querySelectorAll('.get-app').forEach(b => { (b.closest('.nav-app') || b).hidden = true; }); toast("Demetria's is on your home screen 🐱"); });
+  $('#installBtn').onclick = openInstall;
   $('#installClose').onclick = () => { ls.set('dd-install-later', Date.now()); hideInstall(); };
-  $('#iosOk').onclick = () => { $('#iosDlg').close(); ls.set('dd-install-later', Date.now()); };
-  if (isIOS && isSafari) offerInstall(9000);
+  document.addEventListener('click', e => { if (e.target.closest('.get-app')) { e.preventDefault(); openInstall(); } });
+  $('#iosOk').onclick = () => $('#iosDlg').close();
+  $('#iosX').onclick = () => $('#iosDlg').close();
+  $('#instCopyBtn').onclick = async () => {
+    const u = $('#instUrl');
+    try { await navigator.clipboard.writeText(u.value); } catch { u.select(); document.execCommand?.('copy'); }
+    $('#instCopyBtn').textContent = 'Copied ✓'; setTimeout(() => { $('#instCopyBtn').textContent = 'Copy link'; }, 2000);
+  };
+  if (location.hash === '#app') setTimeout(openInstall, 600);
+  showButtons();
+  if (!(isAndroid && !inApp && !samsung && !andFirefox)) offerInstall(8000); // Android Chrome: wait for its own install event (fallback below)
+  else setTimeout(() => { if (!installEvt) offerInstall(0); }, 9000);
 
   applyHero(); applyPay(); applyDelivery(); renderCart(); renderMine();
   loadMenu(); pollMine();

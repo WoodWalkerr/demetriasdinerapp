@@ -6,7 +6,7 @@ import { loadCatalog, priceLine, makeCode, takeStock, returnStock, deliveryQuote
 import { openState, TZ } from '../lib/time.js';
 import { checkCode, codeDiscount, codeLabel, publicCode, bogoReward, bogoNeed } from '../lib/promocodes.js';
 import { activeDeals, applyDeals, dealsDiscountLabel } from '../lib/deals.js';
-import { applyLoyalty, cardOf, normPhone } from '../lib/loyalty.js';
+import { applyLoyalty, cardOf, normPhone, attachStamp, stampable, maskPhone } from '../lib/loyalty.js';
 import { createCheckout, paymongoConfigured, baseUrl, syncPayment } from '../lib/paymongo.js';
 
 // Public order endpoints (vercel.json rewrites /api/orders/:id → /api/orders?id=:id)
@@ -42,6 +42,11 @@ export default route(['GET', 'POST'], async (req, res) => {
     const action = b.action || (b.reference ? 'reference' : '');
     if (action === 'reference') o = await sendReference(o, b.reference);
     else if (action === 'message') await sendMessage(o, b.body);
+    else if (action === 'stamp') {
+      // "Claim today's stamp": the customer forgot to type their number when ordering.
+      const r = await attachStamp((await getSettings()).loyalty, o, b.phone);
+      return res.status(200).json({ ...(await customerView(r.order)), claimed: { stamps: r.card.stamps, needed: r.card.needed, pending: r.card.pending, earned: r.earned, paid: r.paid } });
+    }
     else throw new HttpError(400, 'Unknown action.');
   } else if (o.payment_status === 'pending') {
     try { o = await syncPayment(o); } catch (e) { console.error('payment sync failed', e.message); }
@@ -60,6 +65,7 @@ async function customerView(o) {
     orderType: o.order_type, delivery: o.delivery ? { address: o.delivery.address, km: o.delivery.km } : null,
     pickupLabel: o.pickup_label, pickupAt: o.pickup_at, scheduledFor: o.scheduled_for || null, createdAt: o.created_at, items: o.items,
     discountCents: o.discount_cents || 0, promoCode: o.promo_code || null, dealCents: o.deal_cents || 0, deals: o.deals || [],
+    stampPhone: o.loyalty_phone ? maskPhone(o.loyalty_phone) : null, stampable: stampable((await getSettings()).loyalty, o),
     paymentMethod: o.payment_method, paymentStatus: o.payment_status, reference: o.reference,
     checkoutUrl: o.payment_status === 'pending' ? o.checkout_url : null,
     qr: needQr ? qrPublic(await getSettings()) : null,
