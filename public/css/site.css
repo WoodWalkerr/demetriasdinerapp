@@ -1024,7 +1024,7 @@ body.sees-cost .field.cost-col{display:grid}
 .sug-row .sug{flex:0 0 118px;scroll-snap-align:start;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto 1fr;gap:6px;align-items:start;padding:8px;border-radius:14px;background:var(--bg);border:1px solid var(--line)}
 .sug-row .sug-art{width:100%;height:76px;border-radius:10px}
 .sug-row .sug-art svg{height:64px}
-.sug-row .sug b{font-size:13.5px;line-height:1.25;display:-webkit-box;line-clamp:2;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.5em}
+.sug-row .sug b{font-size:13.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.5em}
 .sug-row .btn{align-self:end;justify-content:center;width:100%}
 .cart-suggest{flex:none;overflow:visible}   /* never squashed by the scrolling cart drawer */
 .sug-row{overflow-y:hidden}
@@ -1088,3 +1088,26 @@ body.sees-cost .field.cost-col{display:grid}
 .gcash-btn{background:#007dfe;border-color:#007dfe;color:#fff}
 .ps .field{margin:0}
 .ps .code-row input{min-width:0}
+
+/* ---------- Pearl Catch game ---------- */
+.play-btn{margin-top:8px;width:100%;justify-content:center}
+.game-dlg{width:min(460px,100vw);max-width:100vw;height:min(760px,100dvh);max-height:100dvh;padding:0;border:0;border-radius:22px;background:var(--bg);color:var(--ink);overflow:hidden}
+.game-dlg[open]{display:flex;flex-direction:column}
+.game-dlg::backdrop{background:rgba(20,16,10,.55)}
+@media (max-width:520px){.game-dlg{width:100vw;height:100dvh;border-radius:0}}
+.g-top{display:flex;align-items:center;gap:8px;padding:12px 12px 6px calc(12px + env(safe-area-inset-left));padding-top:max(12px,env(safe-area-inset-top))}
+.g-status{flex:1;min-width:0;font:600 14px/1.3 var(--sans,inherit);background:var(--surface);padding:9px 12px;border-radius:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-status.hot{background:var(--matcha);color:#fff;animation:gPulse 1s ease-in-out infinite}
+@keyframes gPulse{50%{transform:scale(1.03)}}
+.g-ico{width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);font-size:17px;cursor:pointer}
+.g-hud{display:flex;justify-content:space-between;padding:4px 16px 8px;font:500 14px var(--mono);font-variant-numeric:tabular-nums}
+.g-hud b{font-size:17px}
+.g-stage{position:relative;flex:1;min-height:260px;margin:0 10px;border-radius:18px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+.g-stage canvas{display:block;touch-action:none}
+.g-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(300px,86%);background:var(--card);border-radius:20px;padding:20px;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.18);display:grid;gap:8px;justify-items:center}
+.g-card[hidden]{display:none}
+.g-card p{margin:0}
+.g-card .btn{width:100%;justify-content:center}
+.g-big{font:400 46px/1 var(--display)}
+.g-small{color:var(--muted);font-size:13.5px;line-height:1.45}
+.g-help{margin:8px 16px;padding-bottom:env(safe-area-inset-bottom);text-align:center;font-size:12.5px;color:var(--muted)}

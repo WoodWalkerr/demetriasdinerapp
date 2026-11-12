@@ -1046,6 +1046,7 @@
     const main = `<div class="ord-top"><b>#${esc(o.code)}</b><span class="pill ${pill}">${label}</span></div>
       ${st === 'cancelled' ? '' : `<div class="track"><i class="${n >= 1 ? 'on' : ''}"></i><i class="${n >= 2 ? 'on' : ''}"></i><i class="${n >= 3 ? 'on' : ''}"></i></div>`}
       <small>${(o.items || []).map(i => `${i.qty} × ${esc(i.name)}${(i.addons || []).length ? ' (+' + i.addons.map(a => esc(a.name)).join(', ') + ')' : ''}`).join(', ')} · ${pesos(o.totalCents || 0)}${o.discountCents ? ` (${o.promoCode ? esc(o.promoCode) + ' ' : ''}−${pesos(o.discountCents)})` : ''}${o.deliveryFeeCents ? ` incl. ${pesos(o.deliveryFeeCents)} delivery` : ''}<br>${esc(payLine)} · ${esc(o.pickupLabel || '')} · ordered ${fmtTime(o.at)}</small>
+      ${['new', 'making', 'delivering'].includes(st) && !(qr && ['awaiting_proof', 'rejected'].includes(ps)) && !(online && ps === 'pending') ? `<button class="btn ghost sm play-btn" type="button" data-play="${esc(o.id)}">🎮 Play while you wait</button>` : ''}
       ${o.stampPhone ? `<small class="stamp-on">🎟️ On stamp card ${esc(o.stampPhone)}</small>` : ''}
       ${o.stampable && cat.loyalty?.enabled ? (claimOpen.has(o.id)
         ? `<div class="claim-row" data-claim="${esc(o.id)}"><input inputmode="tel" maxlength="16" enterkeyhint="done" placeholder="Your mobile number" value="${esc(stamp.phone || '')}" aria-label="Mobile number"><button class="btn sm" type="button" data-claim-go>Claim</button></div>`
@@ -1108,6 +1109,13 @@
       renderMine(); return true;
     } catch (err) { toast(err.message); if (input && !input.value) input.value = text; return false; }
   }
+  // ---------- "Play while you wait": Pearl Catch (js/game.js, loaded only when someone taps Play)
+  let gameLoad = null;
+  function playGame(id) {
+    const live = () => mine.find(x => x.id === id);
+    gameLoad = gameLoad || new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = '/js/game.js'; sc.onload = ok; sc.onerror = () => { gameLoad = null; no(); }; document.head.append(sc); });
+    gameLoad.then(() => window.DDGame.open(live)).catch(() => toast("The game couldn't load. Check your connection."));
+  }
   const claimOpen = new Set();
   // (a <div>, not a <form>: "Your orders" sits inside the checkout form, and forms can't be nested)
   $('#mine').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.closest('[data-claim] input')) { e.preventDefault(); claimStamp(e.target.closest('[data-claim]')); } });
@@ -1126,6 +1134,7 @@
   }
   $('#mine').addEventListener('click', e => {
     if (e.target.closest('[data-claim-go]')) return claimStamp(e.target.closest('[data-claim]'));
+    const pl = e.target.closest('[data-play]'); if (pl) return playGame(pl.dataset.play);
     const co = e.target.closest('[data-claim-open]');
     if (co) { claimOpen.add(co.dataset.claimOpen); renderMine(); $(`[data-claim="${CSS.escape(co.dataset.claimOpen)}"] input`)?.focus(); return; }
     const t = e.target.closest('[data-chat]');
@@ -1304,6 +1313,15 @@
 
   // ---------- load menu; stay up to date without reloading ----------
   let stampLooked = false;
+  // ---------- loading screen: leaves once the menu is ready (at least a short moment so it doesn't flash, at most 6 s)
+  const splashT0 = performance.now();
+  function hideSplash() {
+    const el = document.getElementById('splash'); if (!el || el.classList.contains('out')) return;
+    let seen = false; try { seen = !!sessionStorage.getItem('dd-splash'); sessionStorage.setItem('dd-splash', '1'); } catch {}
+    const wait = Math.max(0, (seen ? 0 : 1100) - (performance.now() - splashT0));
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 800); }, wait);
+  }
+  setTimeout(hideSplash, 6000); // slow or no signal: show the saved menu instead of waiting
   function apply(d) {
     cat = d; byId = Object.fromEntries(d.items.map(i => [i.id, i])); addonById = Object.fromEntries(d.addons.map(a => [a.id, a]));
     if (d.categories) CAT_LABEL = d.categories;
@@ -1311,12 +1329,12 @@
     apiState = 'ready';
     if (pin && cat.delivery.enabled) pin = { ...quote(pin.lat, pin.lng) };
     lastSig = promoSig();
-    render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart(); maybeAutoPopup();
+    render(); applyHero(); applyPay(); applyDelivery(); renderHours(); applyWhen(); renderCart(); maybeAutoPopup(); hideSplash();
     if (cat.loyalty?.enabled && stamp.phone && !stamp.card && !stampLooked) { stampLooked = true; checkStamp(true); }
   }
   async function loadMenu() {
     try { apply(await api('/api/menu')); checkBuild(cat.build); }
-    catch (e) { if (!e.status) console.error('Menu update failed:', e); if (apiState !== 'ready') { apiState = 'down'; renderCart(); } }
+    catch (e) { if (!e.status) console.error('Menu update failed:', e); if (apiState !== 'ready') { apiState = 'down'; renderCart(); } hideSplash(); }
   }
   // A new version of the site was deployed → reload at a safe moment (cart is saved).
   let firstBuild = null, reloadWanted = false;
