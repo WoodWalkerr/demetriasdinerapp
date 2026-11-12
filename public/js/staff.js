@@ -145,7 +145,7 @@
     if (st === 'both' || st === 'voice' || st === 'meow') setTimeout(() => speak(text), st === 'voice' ? 0 : cat ? (high ? 550 : 1500) : 450);
   };
   const payBadge = (o) => {
-    const parts = (o.payments || []).length > 1 ? o.payments.map(p => PAY[p.method] || p.method).join(' + ') : PAY[o.paymentMethod] || o.paymentMethod;
+    const parts = (o.payments || []).length > 1 ? o.payments.map(p => PAY[p.method] || p.method).join(' + ') : o.paymentMethod === 'qrph' && o.qrWallet ? `${o.qrWallet === 'maya' ? 'Maya' : 'GCash'} QR` : PAY[o.paymentMethod] || o.paymentMethod;
     return `<span class="pay-badge">${o.source === 'pos' ? 'POS · ' : ''}${esc(parts)} <span class="pill ${o.paymentStatus}">${PAYST[o.paymentStatus] || o.paymentStatus}</span></span>`;
   };
   const promoTag = (i) => (i.promo ? `<small class="promo-t">${esc(i.promo.name)} −${money(i.promo.offCents)}${i.qty > 1 ? ' each' : ''}</small>` : '');
@@ -427,7 +427,7 @@
       const x = e.target.closest('[data-pl-x]'); if (x) { lines.splice(+x.dataset.plX, 1); draw(); return; }
       if (e.target.closest('[data-pl-fill]')) { const rem = total() - filled(); const empty = lines.find(l => !l.cents) || lines[lines.length - 1]; empty.cents = (empty.cents || 0) + rem; draw(); return; }
       const q = e.target.closest('[data-pl-q]'); if (q) { tendered = String(+q.dataset.plQ / 100); draw(); return; }
-      if (e.target.closest('[data-pl-qr]')) { $('#posQrAmt').textContent = money(lines.filter(l => ['gcash', 'paymaya'].includes(l.method)).reduce((a, l) => a + (l.cents || 0), 0)); $('#posQrImg').src = settings.qr.image; $('#posQrName').textContent = settings.qr.name || ''; $('#posQrDlg').showModal(); }
+      if (e.target.closest('[data-pl-qr]')) { $('#posQrAmt').textContent = money(lines.filter(l => ['gcash', 'paymaya'].includes(l.method)).reduce((a, l) => a + (l.cents || 0), 0)); const useM = (lines.some(l => l.method === 'paymaya') && settings.qr.maya?.image) || !settings.qr.image, Q = useM ? settings.qr.maya : settings.qr; $('#posQrImg').src = Q.image; $('#posQrName').textContent = `${useM ? 'Maya' : 'GCash'} · ${Q.name || ''}`; $('#posQrDlg').showModal(); }
     });
     draw();
     return {
@@ -520,7 +520,7 @@
         ${o.loyaltyPhone ? `<dt>Stamp card</dt><dd>🎟️ <span class="mono">${esc(o.loyaltyPhone)}</span>${o.loyaltyEarn ? ` · +${o.loyaltyEarn} stamp${o.loyaltyEarn === 1 ? '' : 's'}` : ''}${o.loyaltyUsed ? ' · free item used' : ''}</dd>` : ''}
         ${o.discountCents ? `<dt>Discount</dt><dd>${esc(o.discountType)} · −${money(o.discountCents)}</dd>` : ''}
         ${o.tenderedCents != null ? `<dt>Cash</dt><dd>${money(o.tenderedCents)} received · ${money(o.changeCents)} change</dd>` : ''}
-        ${o.reference ? `<dt>${qr ? 'Customer ref' : 'Reference'}</dt><dd class="mono">${esc(o.reference)}</dd>` : ''}
+        ${o.reference ? `<dt>${qr ? (o.qrWallet === 'maya' ? 'Maya ref' : o.qrWallet === 'gcash' ? 'GCash ref' : 'Customer ref') : 'Reference'}</dt><dd class="mono">${esc(o.reference)}</dd>` : ''}
         ${o.paymentId ? `<dt>PayMongo ID</dt><dd class="mono">${esc(o.paymentId)}</dd>` : ''}
         ${o.refundId ? `<dt>Refund ID</dt><dd class="mono">${esc(o.refundId)}</dd>` : ''}
       </dl>
@@ -1239,7 +1239,7 @@
   $('#finDlgPrint').onclick = () => printDialog($('#finDlg'));
 
   // ===================================================================== SETTINGS
-  let qrDraft = null, setMapObj = null, storeMk = null, storePin = null, tiersDraft = null;
+  let qrmDraft = null, qrDraft = null, setMapObj = null, storeMk = null, storePin = null, tiersDraft = null;
   function renderSettings() {
     if (!settings || $('#view-settings').hidden) return;
     $('#acceptToggle').checked = settings.accepting;
@@ -1249,7 +1249,11 @@
     $('#qrToggle').checked = !!q.enabled;
     if (!qrDraft) { $('#qrNameIn').value = q.name || ''; $('#qrNumIn').value = q.number || ''; }
     const img = qrDraft || q.image;
-    $('#qrPreview').hidden = !img; $('#qrEmpty').hidden = !!img; if (img) $('#qrPreview').src = img;
+    $('#qrPreview').hidden = !img; $('#qrEmpty').hidden = !!img; if (img) $('#qrPreview').src = img; $('#qrRemove').hidden = !q.image;
+    const m = q.maya || {};
+    if (!qrmDraft && document.activeElement?.closest?.('.qr-box') == null) { $('#qrmNameIn').value = m.name || ''; $('#qrmNumIn').value = m.number || ''; }
+    const mimg = qrmDraft || m.image;
+    $('#qrmPreview').hidden = !mimg; $('#qrmEmpty').hidden = !!mimg; if (mimg) $('#qrmPreview').src = mimg; $('#qrmRemove').hidden = !m.image;
     const i = settings.integration || {};
     $('#pmStatus').innerHTML = `<dt>API key</dt><dd class="${i.paymongo ? 'ok' : ''}">${i.paymongo ? `Connected · ${i.mode === 'live' ? 'LIVE' : 'Test mode'}` : 'Not used'}</dd><dt>Webhook</dt><dd>${i.webhook ? 'Configured' : 'Not set'}</dd>`;
     $('#whUrl').textContent = location.origin + '/api/payments/webhook';
@@ -1329,6 +1333,20 @@
   $('#payOnlineToggle').onchange = e => saveSettings({ payOnline: e.target.checked });
   $('#payCounterToggle').onchange = e => saveSettings({ payCounter: e.target.checked });
   $('#qrToggle').onchange = e => saveSettings({ qrEnabled: e.target.checked });
+  const readQr = async (f) => {
+    const bmp = await createImageBitmap(f);
+    const scale = Math.min(1, 900 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas'); c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(bmp, 0, 0, c.width, c.height);
+    let d = c.toDataURL('image/png'); if (d.length > 520000) d = c.toDataURL('image/jpeg', 0.9); return d;
+  };
+  $('#qrmFile').addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try { qrmDraft = await readQr(f); renderSettings(); toast('Maya QR loaded. Tap "Save Maya QR".'); } catch { toast("Couldn't read that image. Try a PNG or JPG."); }
+  });
+  $('#qrmSave').onclick = async () => { const patch = { qrMayaName: $('#qrmNameIn').value, qrMayaNumber: $('#qrmNumIn').value }; if (qrmDraft) patch.qrMayaImage = qrmDraft; if (await saveSettings(patch, 'Maya QR saved')) qrmDraft = null; renderSettings(); };
+  $('#qrRemove').onclick = async () => { if (!confirm('Remove the GCash QR? Customers will only see Maya.')) return; qrDraft = null; await saveSettings({ qrImage: '', qrName: '', qrNumber: '' }, 'GCash QR removed'); };
+  $('#qrmRemove').onclick = async () => { if (!confirm('Remove the Maya QR? Customers will only see GCash.')) return; qrmDraft = null; await saveSettings({ qrMayaImage: '', qrMayaName: '', qrMayaNumber: '' }, 'Maya QR removed'); };
   $('#qrFile').addEventListener('change', async e => {
     const f = e.target.files[0]; if (!f) return;
     try {
@@ -1640,7 +1658,7 @@
   // ===================================================================== NEWSLETTER SETTINGS
   function renderNewsBox() {
     const N = settings.newsletter || {};
-    $('#nwOn').checked = !!N.enabled;
+    $('#nwOn').checked = !!N.enabled; $('#nwGate').checked = N.gateCodes !== false;
     if (document.activeElement?.closest?.('.news-box') == null) { $('#nwTitle').value = N.title || ''; $('#nwText').value = N.text || ''; $('#nwButton').value = N.button || ''; $('#nwDelay').value = N.delay || 25; $('#nwCode').value = N.welcomeCode || ''; }
     loadNewsStats();
   }
@@ -1649,8 +1667,8 @@
       $('#nwStats').innerHTML = `<b>${c.active}</b> subscriber${c.active === 1 ? '' : 's'} · <b>+${c.week}</b> this week${c.unsubscribed ? ` · ${c.unsubscribed} unsubscribed` : ''}`; }
     catch (err) { $('#nwStats').textContent = err.status === 403 ? 'Only staff with the Settings permission can see the list.' : err.message; }
   }
-  const saveNews = async () => { if (await saveSettings({ newsletter: { enabled: $('#nwOn').checked, title: $('#nwTitle').value, text: $('#nwText').value, button: $('#nwButton').value, delay: $('#nwDelay').value, welcomeCode: $('#nwCode').value } }, 'Newsletter saved')) $('#nwCode').value = settings.newsletter?.welcomeCode || ''; };
-  $('#nwSave').onclick = saveNews; $('#nwOn').onchange = saveNews;
+  const saveNews = async () => { if (await saveSettings({ newsletter: { enabled: $('#nwOn').checked, title: $('#nwTitle').value, text: $('#nwText').value, button: $('#nwButton').value, delay: $('#nwDelay').value, welcomeCode: $('#nwCode').value, gateCodes: $('#nwGate').checked } }, 'Newsletter saved')) $('#nwCode').value = settings.newsletter?.welcomeCode || ''; };
+  $('#nwSave').onclick = saveNews; $('#nwOn').onchange = saveNews; $('#nwGate').onchange = saveNews;
   $('#nwExport').addEventListener('click', () => setTimeout(loadNewsStats, 1500));
   $('#nwDelBtn').onclick = async () => {
     const e = $('#nwDel').value.trim(); if (!e) return $('#nwDel').focus();

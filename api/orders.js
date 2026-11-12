@@ -40,7 +40,7 @@ export default route(['GET', 'POST'], async (req, res) => {
 
   if (req.method === 'POST') {
     const action = b.action || (b.reference ? 'reference' : '');
-    if (action === 'reference') o = await sendReference(o, b.reference);
+    if (action === 'reference') o = await sendReference(o, b.reference, b.wallet);
     else if (action === 'message') await sendMessage(o, b.body);
     else if (action === 'stamp') {
       // "Claim today's stamp": the customer forgot to type their number when ordering.
@@ -206,7 +206,7 @@ function whenLabel(d) {
   return `${dd} ${f({ hour: 'numeric', minute: '2-digit' })}`;
 }
 
-async function sendReference(o, reference) {
+async function sendReference(o, reference, wallet) {
   if (o.payment_method !== 'qrph') throw new HttpError(400, 'This order is not paid by QR.');
   if (!['awaiting_proof', 'submitted', 'rejected'].includes(o.payment_status) || o.status === 'done') throw new HttpError(409, 'This payment is already confirmed.');
   const ref = clean(reference, 40).replace(/\s+/g, '');
@@ -216,7 +216,8 @@ async function sendReference(o, reference) {
     const took = await takeStock(items, `Re-opened #${o.code}`);
     await sql`UPDATE orders SET stock_applied = ${took} WHERE id = ${o.id}`;
   }
-  const [x] = await sql`UPDATE orders SET reference = ${ref}, payment_status = 'submitted',
+  const w = wallet === 'maya' ? 'maya' : wallet === 'gcash' ? 'gcash' : null;
+  const [x] = await sql`UPDATE orders SET reference = ${ref}, qr_wallet = COALESCE(${w}, qr_wallet), payment_status = 'submitted',
                     status = CASE WHEN status = 'cancelled' THEN 'new' ELSE status END, updated_at = now()
                   WHERE id = ${o.id} RETURNING *`;
   return x;

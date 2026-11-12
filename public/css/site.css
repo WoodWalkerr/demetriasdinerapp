@@ -1024,7 +1024,7 @@ body.sees-cost .field.cost-col{display:grid}
 .sug-row .sug{flex:0 0 118px;scroll-snap-align:start;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto 1fr;gap:6px;align-items:start;padding:8px;border-radius:14px;background:var(--bg);border:1px solid var(--line)}
 .sug-row .sug-art{width:100%;height:76px;border-radius:10px}
 .sug-row .sug-art svg{height:64px}
-.sug-row .sug b{font-size:13.5px;line-height:1.25;display:-webkit-box;line-clamp:2;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.5em}
+.sug-row .sug b{font-size:13.5px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.5em}
 .sug-row .btn{align-self:end;justify-content:center;width:100%}
 .cart-suggest{flex:none;overflow:visible}   /* never squashed by the scrolling cart drawer */
 .sug-row{overflow-y:hidden}
@@ -1140,3 +1140,26 @@ body.sees-cost .field.cost-col{display:grid}
 .privacy-dlg #privOk{width:100%;justify-content:center;margin-top:12px}
 .foot{flex-wrap:wrap;gap:8px 16px}
 .news-stats{margin:6px 0 10px;font-size:15px}
+
+/* ---------- GCash / Maya choice in the QR payment window ---------- */
+.wallet-tabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:var(--surface);padding:5px;border-radius:14px}
+.wallet-tabs[hidden]{display:none}
+.wallet-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:10px;padding:10px;background:transparent;color:var(--ink);font:600 15px/1 inherit;font-family:inherit;cursor:pointer}
+.wallet-tabs button.on{background:var(--card);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.wl{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#fff;font:800 13px/1 system-ui}
+.wl.g{background:#007dfe}.wl.m{background:#00a650}
+.maya-btn{background:#00a650;border-color:#00a650;color:#fff}
+.qr-fields .row-btns{display:grid;grid-template-columns:1fr auto;gap:8px}.qr-fields .row-btns .btn{white-space:nowrap;justify-content:center}
+
+/* ---------- Promo pop-up: unlock the code with your email ---------- */
+.pp-gate{display:grid;gap:8px;margin-top:4px;text-align:left}
+.pp-gate[hidden]{display:none}
+.pp-gate label{font-weight:700;font-size:15px}
+.pp-gate .code-row input{min-width:0}
+.pp-fine{margin:0;font-size:12px;color:var(--muted);line-height:1.45}
+.pp-fine .linkbtn{font-size:12px;padding:0}
+.pp-code.locked{letter-spacing:.1em;color:var(--muted);filter:blur(.3px)}
+#ppBtns[hidden]{display:none}
+.pp-gate input[type=email]{text-transform:none;letter-spacing:normal;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:400 16px/1.2 inherit;font-family:inherit}
+.pp-gate input[type=email]::placeholder{text-transform:none;color:var(--muted)}
+.pp-gate input[type=email]:focus{outline:2px solid var(--matcha);outline-offset:1px}

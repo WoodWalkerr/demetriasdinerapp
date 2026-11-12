@@ -658,7 +658,11 @@
   $('#mapOk').onclick = () => { pin = draft; ls.set('dd-pin', pin); $('#mapDlg').close(); applyDelivery(); setNote(''); renderCart(); };
 
   // ---------- payment choice ----------
+  // Which of the shop's QRs exist: 'GCash / Maya', or just 'Maya' / 'GCash' (Staff → Settings → QR)
+  const walletWord = () => { const w = cat.qrWallets || []; return w.length === 1 ? (w[0] === 'maya' ? 'Maya' : 'GCash') : 'GCash / Maya'; };
   function applyPay() {
+    const ww = walletWord(); PAY.qrph = ww + ' QR'; $('#qrPayName').textContent = ww;
+    document.querySelectorAll('.w-list').forEach(el => { if (!el.dataset.orig) el.dataset.orig = el.textContent; el.textContent = ww === 'Maya' ? (el.dataset.orig.endsWith(',') ? 'Maya,' : 'Maya') : el.dataset.orig; });
     Object.entries(cat.payments).forEach(([k, on]) => { const i = $('#pay-' + k); if (!i) return; i.disabled = !on; i.hidden = !on; i.nextElementSibling.hidden = !on; });
     const cur = $('input[name=pay]:checked');
     if (!payPicked || !cur || cur.disabled) {
@@ -724,7 +728,7 @@
     btn.textContent = busy ? 'Sending…' : !cart.length ? 'Place order'
       : pm === 'qrph' ? `Continue to pay ${pesos(totalNow)}` : ['gcash', 'paymaya', 'card'].includes(pm) ? `Pay ${pesos(totalNow)} with ${PAY[pm]}` : `Place order · ${pesos(totalNow)}`;
     renderAgain(); renderPromoChip();
-    if (!busy && !$('#orderNote').classList.contains('err')) setNote(why || (!cart.length ? '' : pm === 'counter' ? (del ? 'Pay the rider in cash when your order arrives.' : 'Pay with cash or GCash at the counter when you pick up.') : pm === 'qrph' ? "Next, you'll see our GCash QR to scan and pay." : `You'll be taken to ${PAY[pm]} to pay securely through PayMongo.`));
+    if (!busy && !$('#orderNote').classList.contains('err')) setNote(why || (!cart.length ? '' : pm === 'counter' ? (del ? 'Pay the rider in cash when your order arrives.' : 'Pay with cash or GCash at the counter when you pick up.') : pm === 'qrph' ? `Next, you'll see our ${walletWord() === 'GCash / Maya' ? 'GCash or Maya' : walletWord()} QR to scan and pay.` : `You'll be taken to ${PAY[pm]} to pay securely through PayMongo.`));
   }
   $('#lines').addEventListener('click', e => {
     const b = e.target.closest('[data-q]'); if (!b) return;
@@ -770,9 +774,14 @@
     const codes = (cat.featured || []).filter(c => codeNow(c)).map(c => ({ type: 'code', key: c.code, c }));
     return [...deals, ...codes];
   }
+  // 🔒 Newsletter "unlock": promo codes in pop-ups stay hidden until the customer leaves their email
+  // (Staff → Settings → Newsletter). Once signed up on this phone, codes show straight away.
+  const codeLocked = () => !!(cat.newsletter?.enabled && cat.newsletter.gateCodes && ls.get('dd-news', '') !== 'yes');
   function drawPopup() {
     const x = ppList[ppIdx]; if (!x) return;
     const isDeal = x.type === 'deal';
+    const locked = !isDeal && codeLocked();
+    $('#ppGate').hidden = !locked; $('#ppBtns').hidden = locked; $('#ppCode').classList.toggle('locked', locked);
     ppDlg.classList.toggle('is-deal', isDeal);
     if (isDeal) {
       const d = x.d, items = d.productIds.map(id => byId[id]).filter(it => it && it.price != null);
@@ -790,7 +799,7 @@
       $('#ppEyebrow').textContent = '🎟️ Promo code';
       $('#ppTitle').textContent = c.title || (c.kind === 'bogo' ? `${c.label}!` : `Get ${c.label} today!`);
       $('#ppText').textContent = c.text; $('#ppText').hidden = !c.text;
-      $('#ppCode').textContent = c.code; $('#ppLabel').textContent = c.label;
+      $('#ppCode').textContent = locked ? '• • • • • •' : c.code; $('#ppLabel').textContent = c.label;
       $('#ppRules').textContent = [c.minCents ? `Minimum order ${pesos(c.minCents)}` : '', c.startTime ? `${t12c(c.startTime)} – ${t12c(c.endTime)} only` : '', c.endsOn ? `Until ${niceEnd(c.endsOn)}` : '',
         c.channel === 'both' ? 'Online, or show this code at the counter' : 'For online orders'].filter(Boolean).join(' · ');
       const using = promo?.code === c.code;
@@ -812,6 +821,18 @@
     renderPromoChip();
   }
   const closePopup = () => { if (ppDlg.open) ppDlg.close(); };
+  $('#ppGate').addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $('#ppEmail').value.trim(), note = $('#ppGateNote');
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) { note.textContent = 'Please enter a valid email address, like name@gmail.com.'; note.classList.add('err'); $('#ppEmail').focus(); return; }
+    $('#ppUnlock').disabled = true; note.textContent = ''; note.classList.remove('err');
+    try {
+      await api('/api/news', { method: 'POST', body: JSON.stringify({ email, name: ($('#o-name').value || '').trim().split(' ')[0], phone: stamp.phone || '', source: 'promo', website: $('#ppHp').value }) });
+      ls.set('dd-news', 'yes'); document.querySelectorAll('.news-open').forEach(b => { b.hidden = true; });
+      drawPopup(); renderPromoChip(); toast('🎉 Unlocked! You can use the code now.');
+    } catch (err) { note.textContent = err.message; note.classList.add('err'); }
+    $('#ppUnlock').disabled = false;
+  });
   $('#ppClose').onclick = $('#ppLater').onclick = closePopup;
   ppDlg.addEventListener('click', e => { if (e.target === ppDlg) closePopup(); }); // tap outside to close
   // When one closes (by any button, Esc or tapping outside), the next unseen one shows 2 seconds later.
@@ -858,7 +879,7 @@
     const applied = list.find(x => x.type === 'code' && x.c.code === promo?.code);
     const x = applied || list[0];
     const text = x.type === 'deal' ? `🎉 <b>${esc(x.d.title)}</b>: ${esc(dealWhat(x.d))}`
-      : applied ? `✅ <b>${esc(x.c.code)}</b> applied: ${esc(x.c.label)}` : `🎟️ Use code <b>${esc(x.c.code)}</b> for ${esc(x.c.label)}`;
+      : applied ? `✅ <b>${esc(x.c.code)}</b> applied: ${esc(x.c.label)}` : codeLocked() ? `🎟️ <b>${esc(x.c.label)}</b> promo · tap to unlock 🔒` : `🎟️ Use code <b>${esc(x.c.code)}</b> for ${esc(x.c.label)}`;
     box.insertAdjacentHTML('afterbegin', `<button type="button" class="sb code" data-open-pp="${esc(x.key)}">${text}${list.length > 1 ? ` · +${list.length - 1} more` : ''}</button>`);
     box.hidden = false;
   }
@@ -1047,7 +1068,7 @@
     if (['rejected', 'expired', 'failed'].includes(ps)) { st = 'cancelled'; label = ps === 'rejected' ? 'Payment not found' : 'Payment not completed'; pill = 'cancelled'; }
     if (['voided', 'refunded'].includes(ps)) label = ps === 'refunded' ? 'Cancelled · refunded' : 'Cancelled';
     const n = (online && ps === 'pending') || (qr && ps !== 'paid') ? 0 : STEP[st];
-    const payLine = qr ? `GCash / Maya QR · ${ps === 'paid' ? 'Paid' : ps === 'submitted' ? `Ref ${o.reference || ''} sent` : 'Not paid yet'}`
+    const payLine = qr ? `${o.qr?.image === '' && o.qr?.maya ? 'Maya' : PAY.qrph.replace(' QR', '')} QR · ${ps === 'paid' ? 'Paid' : ps === 'submitted' ? `Ref ${o.reference || ''} sent` : 'Not paid yet'}`
       : online ? `${PAY[o.paymentMethod]} · ${ps === 'paid' ? 'Paid' : ps === 'refunded' ? 'Refunded' : 'Not paid yet'}`
       : o.orderType === 'delivery' ? 'Cash on delivery' : 'Pay at counter';
     const main = `<div class="ord-top"><b>#${esc(o.code)}</b><span class="pill ${pill}">${label}</span></div>
@@ -1243,18 +1264,39 @@
   const onPhone = /iphone|ipad|ipod|android|mobile/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const onIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const amountText = (c) => { const v = (c || 0) / 100; return Number.isInteger(v) ? String(v) : v.toFixed(2); }; // "119" / "119.50": what GCash's amount box takes
+  let qrWallet = 'gcash';
+  const WALLET = {
+    gcash: { name: 'GCash', open: 'Open GCash', how: 'In GCash tap <b>Pay QR</b> → <b>Upload QR</b> (top right) → choose the QR you saved.', ref: "It's on your GCash receipt (<b>Ref No.</b>, 13 digits) or in the GCash text message.",
+      ios: 'gcash://', android: 'com.globe.gcash.android', store: { ios: 'https://apps.apple.com/ph/app/gcash/id520020791', android: 'https://play.google.com/store/apps/details?id=com.globe.gcash.android' } },
+    maya: { name: 'Maya', open: 'Open Maya', how: 'In Maya tap <b>Scan</b> (the QR icon) → <b>Upload QR</b> / the photo icon → choose the QR you saved.', ref: "It's on your Maya receipt (<b>Reference ID</b>) or in the Maya text message.",
+      ios: 'paymaya://', android: 'com.paymaya', store: { ios: '', android: 'https://play.google.com/store/apps/details?id=com.paymaya' } },
+  };
+  function showWallet() {
+    const o = qrOrder, w = WALLET[qrWallet], q = qrWallet === 'maya' ? o.qr.maya : o.qr;
+    document.querySelectorAll('#qrTabs [data-wallet]').forEach(b => { const on = b.dataset.wallet === qrWallet; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+    $('#qrTitle').textContent = `Pay with ${$('#qrTabs').hidden && qrWallet === 'gcash' ? 'GCash or Maya' : w.name}`;
+    if ($('#qrImg').getAttribute('src') !== q.image) $('#qrImg').src = q.image;
+    $('#qrImg').alt = `Demetria's Diner ${w.name} QR code`;
+    $('#qrName').textContent = q.name || '—'; $('#qrNum').textContent = q.number || '—'; $('#qrCopy').hidden = !q.number;
+    $('#ps2t').textContent = `Open ${w.name} and upload the QR`; $('#qrOpenG').textContent = w.open; $('#qrOpenG').className = `btn ${qrWallet}-btn`;
+    $('#ps2h').innerHTML = w.how + (qrWallet === 'gcash' && $('#qrTabs').hidden ? ' Using Maya? Tap <b>Scan</b> → <b>Upload QR</b>.' : '');
+    $('#ps4h').innerHTML = w.ref;
+    $('#qrSave').textContent = '⬇️ Save QR to Photos';
+  }
+  $('#qrTabs').addEventListener('click', e => { const b = e.target.closest('[data-wallet]'); if (!b || !qrOrder) return; qrWallet = b.dataset.wallet; ls.set('dd-wallet', qrWallet); showWallet(); });
   function openQr(o) {
     if (!o || !o.qr) return;
     qrOrder = o;
     $('#qrCode').textContent = `Order #${o.code}`;
     $('#qrAmount').textContent = $('#qrAmount2').textContent = pesos(o.totalCents || 0);
-    $('#qrImg').src = o.qr.image;
-    $('#qrName').textContent = o.qr.name || '—';
-    $('#qrNum').textContent = o.qr.number || '—';
-    $('#qrCopy').hidden = !o.qr.number;
+    // GCash and/or Maya: tabs when the shop has both QRs (remembers the customer's last choice)
+    const both = !!(o.qr.image && o.qr.maya?.image);
+    qrWallet = o.qr.image ? (both && ls.get('dd-wallet', '') === 'maya' ? 'maya' : 'gcash') : 'maya';
+    $('#qrTabs').hidden = !both;
+    showWallet();
     // phone: save + open GCash. Computer: just scan the QR on the screen with your phone.
     qrDlg.classList.toggle('on-phone', onPhone);
-    $('#ps1t').textContent = onPhone ? 'Save our QR to your photos' : 'Scan this QR with GCash or Maya on your phone';
+    $('#ps1t').textContent = onPhone ? 'Save our QR to your photos' : `Scan this QR with ${both ? 'GCash or Maya' : WALLET[qrWallet].name} on your phone`;
     $('#qrSave').hidden = $('#qrSaveHint').hidden = !onPhone;
     $('#ps3n').textContent = onPhone ? '3' : '2'; $('#ps4n').textContent = onPhone ? '4' : '3';
     $('#qrSave').textContent = '⬇️ Save QR to Photos'; $('#qrAmtCopy').textContent = 'Copy amount';
@@ -1277,9 +1319,9 @@
     try {
       const blob = await (await fetch($('#qrImg').src)).blob();
       const ext = (blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
-      const file = new File([blob], `demetrias-gcash-qr.${ext}`, { type: blob.type || 'image/png' });
+      const file = new File([blob], `demetrias-${qrWallet}-qr.${ext}`, { type: blob.type || 'image/png' });
       if (navigator.canShare?.({ files: [file] })) {
-        try { await navigator.share({ files: [file] }); btn.textContent = '✓ Saved? Now open GCash'; return; }
+        try { await navigator.share({ files: [file] }); btn.textContent = `✓ Saved? Now open ${WALLET[qrWallet].name}`; return; }
         catch (e) { if (e.name === 'AbortError') return; }
       }
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; document.body.append(a); a.click(); a.remove();
@@ -1289,11 +1331,11 @@
   };
   // Open the GCash app (it can't fill in the amount or the QR; the steps say what to tap)
   $('#qrOpenG').onclick = () => {
-    const store = onIOS ? 'https://apps.apple.com/ph/app/gcash/id520020791' : 'https://play.google.com/store/apps/details?id=com.globe.gcash.android';
+    const W = WALLET[qrWallet], store = onIOS ? W.store.ios : W.store.android;
     let left = false; const away = () => { if (document.hidden) left = true; };
     document.addEventListener('visibilitychange', away);
-    setTimeout(() => { document.removeEventListener('visibilitychange', away); if (!left && !document.hidden) toast("Couldn't open GCash. Open it from your home screen."); }, 2500);
-    location.href = onIOS ? 'gcash://' : `intent://#Intent;package=com.globe.gcash.android;action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;S.browser_fallback_url=${encodeURIComponent(store)};end`;
+    setTimeout(() => { document.removeEventListener('visibilitychange', away); if (!left && !document.hidden) toast(`Couldn't open ${W.name}. Open it from your home screen.`); }, 2500);
+    location.href = onIOS ? W.ios : `intent://#Intent;package=${W.android};action=android.intent.action.MAIN;category=android.intent.category.LAUNCHER;S.browser_fallback_url=${encodeURIComponent(store)};end`;
   };
   // Pasting a whole GCash message also works: we pick out the reference number.
   const cleanRef = (t) => { const v = String(t || '').trim(); const m = v.match(/ref(?:erence)?\.?\s*(?:no\.?|number|#)?\s*[:.]?\s*([0-9][0-9 ]{7,20}[0-9])/i) || v.match(/\b(\d[\d ]{11,16}\d)\b/); return (m ? m[1] : v).replace(/\s+/g, ''); };
@@ -1310,10 +1352,10 @@
     if (!ref) { $('#qrNote').textContent = 'Paste the reference number from your GCash or Maya receipt.'; $('#qrNote').classList.add('err'); $('#qrRef').focus(); return; }
     $('#qrSend').disabled = true;
     try {
-      const s = await api(`/api/orders/${encodeURIComponent(qrOrder.id)}`, { method: 'POST', body: JSON.stringify({ token: qrOrder.token, action: 'reference', reference: ref }) });
+      const s = await api(`/api/orders/${encodeURIComponent(qrOrder.id)}`, { method: 'POST', body: JSON.stringify({ token: qrOrder.token, action: 'reference', reference: ref, wallet: qrWallet }) });
       Object.assign(qrOrder, { paymentStatus: s.paymentStatus, reference: s.reference, status: s.status, messages: s.messages });
       qrDlg.close(); renderMine(); openDrawer();
-      setNote(`Thanks! We're checking GCash for reference ${s.reference}. Your order starts as soon as it's confirmed.`);
+      setNote(`Thanks! We're checking ${WALLET[qrWallet].name} for reference ${s.reference}. Your order starts as soon as it's confirmed.`);
     } catch (err) { $('#qrNote').textContent = err.message; $('#qrNote').classList.add('err'); }
     $('#qrSend').disabled = false;
   });
@@ -1381,7 +1423,7 @@
       const sections = {};
       for (const it of cat.items || []) {
         if (it.price == null || BUNDLE_NAME.test(it.name)) continue;
-        const sec = sections[it.cat] ||= { '@type': 'MenuSection', name: CAT_LABEL?.[it.cat] || it.cat, hasMenuItem: [] };
+        const sec = sections[it.cat] = sections[it.cat] || { '@type': 'MenuSection', name: CAT_LABEL?.[it.cat] || it.cat, hasMenuItem: [] };
         sec.hasMenuItem.push({ '@type': 'MenuItem', name: it.name, ...(it.desc ? { description: it.desc } : {}), offers: { '@type': 'Offer', price: (it.price / 100).toFixed(2), priceCurrency: 'PHP', availability: it.soldOut ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock' } });
       }
       const data = {

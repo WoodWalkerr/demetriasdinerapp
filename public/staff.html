@@ -376,10 +376,22 @@
               <div class="field"><label for="qrFile">QR image</label><input id="qrFile" type="file" accept="image/png,image/jpeg,image/webp"></div>
               <div class="field"><label for="qrNameIn">Account name shown to customers</label><input id="qrNameIn" maxlength="60"></div>
               <div class="field"><label for="qrNumIn">GCash number (optional)</label><input id="qrNumIn" maxlength="20" inputmode="tel"></div>
-              <button class="btn" type="button" id="qrSave">Save QR details</button>
+              <div class="row-btns"><button class="btn" type="button" id="qrSave">Save QR details</button><button class="btn ghost" type="button" id="qrRemove">Remove</button></div>
             </div>
           </div>
-          <p class="hint">GCash app: <b>Profile → My QR Code → Download</b>. Maya users can scan it too (QR Ph).</p>
+          <p class="hint">GCash app: <b>Profile → My QR Code → Download</b>. Maya users can usually scan it too (QR Ph).</p>
+          <h4 class="tiers-h" style="margin-top:14px">Maya QR (optional)</h4>
+          <p class="hint" style="margin:4px 0 0">Add your Maya QR too, and customers choose <b>GCash</b> or <b>Maya</b> when they pay. Each sees the right QR, steps and app button, and you'll see which wallet to check.</p>
+          <div class="qr-setup">
+            <div class="qr-preview"><img id="qrmPreview" alt="Your Maya QR" hidden><span id="qrmEmpty">No Maya QR yet</span></div>
+            <div class="qr-fields">
+              <div class="field"><label for="qrmFile">Maya QR image</label><input id="qrmFile" type="file" accept="image/png,image/jpeg,image/webp"></div>
+              <div class="field"><label for="qrmNameIn">Account name shown to customers</label><input id="qrmNameIn" maxlength="60"></div>
+              <div class="field"><label for="qrmNumIn">Maya number (optional)</label><input id="qrmNumIn" maxlength="20" inputmode="tel"></div>
+              <div class="row-btns"><button class="btn" type="button" id="qrmSave">Save Maya QR</button><button class="btn ghost" type="button" id="qrmRemove">Remove</button></div>
+            </div>
+          </div>
+          <p class="hint">Maya app: <b>tap your QR / "Receive" → Save or Download</b>, then upload it here.</p>
         </div>
         <div class="box">
           <h3>PayMongo (optional)</h3>
@@ -442,6 +454,8 @@
           <div class="field"><label for="nwCode">Welcome promo code (optional)</label><input id="nwCode" maxlength="20" autocapitalize="characters" placeholder="e.g. WELCOME10"></div>
           <p class="hint" style="grid-column:span 2;align-self:end;margin:0">Shown right after they sign up, as a thank-you. Make the code first in <b>Promo codes</b> (tip: 1 use per customer isn't checked by email, so keep it small, like 10% off).</p>
         </div>
+        <label class="switchrow" for="nwGate"><input type="checkbox" class="toggle" id="nwGate"> 🔒 Promo code pop-ups: ask for their email before showing the code</label>
+        <p class="hint" style="margin:0">They see the deal right away, but the code (and Copy / Use buttons) unlock after they enter their email. Signed-up customers see codes straight away. Codes you post yourself (e.g. on Facebook) can still be typed in the cart.</p>
         <div class="row-btns"><button class="btn" type="button" id="nwSave">Save newsletter</button></div>
         <h4 class="tiers-h">Subscribers</h4>
         <p class="news-stats" id="nwStats">…</p>

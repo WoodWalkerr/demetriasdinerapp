@@ -130,7 +130,7 @@
       <div>
         <p class="eyebrow">Espresso · Boba · G-Matcha · Diner food</p>
         <h1 style="margin-top:18px">Come for the drinks, <em>stay for the comfort.</em></h1>
-        <p class="hero-lede">Coffee, boba tea, G-Matcha, fruit lattes and fruit sodas, plus silog plates, sizzling sisig and diner classics. Order ahead and pay with GCash or Maya.</p>
+        <p class="hero-lede">Coffee, boba tea, G-Matcha, fruit lattes and fruit sodas, plus silog plates, sizzling sisig and diner classics. Order ahead and pay with <span class="w-list">GCash or Maya</span>.</p>
         <p class="deliv-note" id="heroDeliv" hidden>🛵 <b>Delivery available</b> <span id="heroDelivT"></span> · choose <b>Delivery</b> in your cart</p>
         <div class="switch" role="group" aria-label="Pick a drink">
           <button id="sw-matcha" data-mode="matcha" aria-pressed="true" style="--sw:#6BA436"><i class="dot"></i>G-Matcha</button>
@@ -234,7 +234,7 @@
         <ol class="steps">
           <li><span class="n">1</span><div><h3>Pick your drinks</h3><p>Coffee, boba tea, G-Matcha, Diner's Favorites, fruit lattes and fruit sodas, from <span class="u">₱99</span>.</p></div></li>
           <li><span class="n">2</span><div><h3>Set sweetness &amp; ice</h3><p>Choose <span class="u">0–100%</span> sweet and no ice up to extra ice.</p></div></li>
-          <li><span class="n">3</span><div><h3>Pay your way</h3><p>GCash or Maya online, or pay at the counter when you pick up.</p></div></li>
+          <li><span class="n">3</span><div><h3>Pay your way</h3><p><span class="w-list">GCash or Maya</span> online, or pay at the counter when you pick up.</p></div></li>
           <li><span class="n">4</span><div><h3>Pick it up</h3><p>We call your order code, like <span class="u">#D4XE</span>, when it's ready.</p></div></li>
         </ol>
       </div>
@@ -246,7 +246,7 @@
       <div class="panel dark">
         <p class="eyebrow">Come for the drinks</p>
         <h2>Stay for the comfort.</h2>
-        <p>Order online for pickup or delivery, now or ahead for later, and pay with GCash, Maya, or at the counter. Message us on Facebook for big orders.</p>
+        <p>Order online for pickup or delivery, now or ahead for later, and pay with <span class="w-list">GCash, Maya,</span> or at the counter. Message us on Facebook for big orders.</p>
         <button class="btn" type="button" id="visitOrder">Start an order</button>
         <button class="btn ghost on-dark" type="button" id="visitStamps" hidden>🎟️ Check my stamps</button>
         <button class="btn ghost on-dark get-app" type="button" hidden>📱 Get the app</button>
@@ -314,7 +314,7 @@
     </div>
     <fieldset class="paygrid" id="payGrid">
       <legend>Payment</legend>
-      <input type="radio" name="pay" id="pay-qrph" value="qrph" checked><label for="pay-qrph"><span class="pm-logo pm-qr">QR</span><b>GCash / Maya</b><small>Scan our QR</small></label>
+      <input type="radio" name="pay" id="pay-qrph" value="qrph" checked><label for="pay-qrph"><span class="pm-logo pm-qr">QR</span><b id="qrPayName">GCash / Maya</b><small>Scan our QR</small></label>
       <input type="radio" name="pay" id="pay-gcash" value="gcash"><label for="pay-gcash"><span class="pm-logo pm-gcash">G</span><b>GCash</b><small>Pay now</small></label>
       <input type="radio" name="pay" id="pay-paymaya" value="paymaya"><label for="pay-paymaya"><span class="pm-logo pm-maya">M</span><b>Maya</b><small>Pay now</small></label>
       <input type="radio" name="pay" id="pay-counter" value="counter"><label for="pay-counter"><span class="pm-logo pm-counter">₱</span><b>At counter</b><small>Cash on pickup</small></label>
@@ -372,7 +372,14 @@
     <div class="pp-ticket"><b class="pp-code" id="ppCode">CODE</b><span id="ppLabel"></span></div>
     <p class="pp-rules" id="ppRules"></p>
     <div class="pp-others" id="ppOthers" hidden></div>
-    <div class="pp-btns"><button class="btn" type="button" id="ppUse">Use this code</button><button class="btn ghost" type="button" id="ppCopy">Copy code</button></div>
+    <form class="pp-gate" id="ppGate" novalidate hidden>
+      <label for="ppEmail">🔒 Enter your email to unlock the code</label>
+      <div class="code-row"><input id="ppEmail" type="email" inputmode="email" autocomplete="email" maxlength="120" placeholder="you@gmail.com" required><button class="btn" type="submit" id="ppUnlock">Unlock</button></div>
+      <input id="ppHp" tabindex="-1" autocomplete="off" aria-hidden="true" class="hp">
+      <p class="pp-fine">You'll also get our promo emails (about once a week). Unsubscribe anytime. <button class="linkbtn" type="button" data-privacy>Privacy notice</button></p>
+      <p class="note" id="ppGateNote" role="status"></p>
+    </form>
+    <div class="pp-btns" id="ppBtns"><button class="btn" type="button" id="ppUse">Use this code</button><button class="btn ghost" type="button" id="ppCopy">Copy code</button></div>
     <button class="linkbtn pp-later" type="button" id="ppLater">Maybe later</button>
   </div>
 </dialog>
@@ -474,6 +481,10 @@
       <div><p class="eyebrow" id="qrCode">Order #D000</p><h3 id="qrTitle" style="margin-top:8px">Pay with GCash or Maya</h3></div>
       <button class="x" type="button" id="qrClose" aria-label="Close">×</button>
     </div>
+    <div class="wallet-tabs" id="qrTabs" role="tablist" aria-label="Choose your wallet" hidden>
+      <button type="button" role="tab" data-wallet="gcash"><span class="wl g">G</span> GCash</button>
+      <button type="button" role="tab" data-wallet="maya"><span class="wl m">M</span> Maya</button>
+    </div>
     <div class="qr-amount"><div><span>Pay exactly</span><b id="qrAmount">₱0</b></div><button class="btn ghost sm" type="button" id="qrAmtCopy">Copy amount</button></div>
     <ol class="pay-steps">
       <li class="ps" id="ps1"><b class="ps-n">1</b><div>
@@ -484,9 +495,9 @@
         <small class="ps-h" id="qrSaveHint">Or press and hold the QR, then tap <b>Save to Photos</b> / <b>Download image</b>.</small>
       </div></li>
       <li class="ps phone-only" id="ps2"><b class="ps-n">2</b><div>
-        <p class="ps-t">Open GCash and upload the QR</p>
+        <p class="ps-t" id="ps2t">Open GCash and upload the QR</p>
         <button class="btn gcash-btn" type="button" id="qrOpenG">Open GCash</button>
-        <small class="ps-h">In GCash tap <b>Pay QR</b> → <b>Upload QR</b> (top right) → choose the QR you saved. Using Maya? Tap <b>Scan</b> → <b>Upload QR</b>.</small>
+        <small class="ps-h" id="ps2h">In GCash tap <b>Pay QR</b> → <b>Upload QR</b> (top right) → choose the QR you saved. Using Maya? Tap <b>Scan</b> → <b>Upload QR</b>.</small>
       </div></li>
       <li class="ps" id="ps3"><b class="ps-n" id="ps3n">3</b><div>
         <p class="ps-t">Paste the amount and pay</p>
@@ -494,7 +505,7 @@
       </div></li>
       <li class="ps" id="ps4"><b class="ps-n" id="ps4n">4</b><div>
         <p class="ps-t">Copy the reference number and come back here</p>
-        <small class="ps-h">It's on your GCash receipt (<b>Ref No.</b>, 13 digits) or in the GCash text message.</small>
+        <small class="ps-h" id="ps4h">It's on your GCash receipt (<b>Ref No.</b>, 13 digits) or in the GCash text message.</small>
         <div class="field"><label for="qrRef">Reference number</label>
           <div class="code-row"><input id="qrRef" inputmode="numeric" autocomplete="off" maxlength="40" placeholder="e.g. 1234 567 891234"><button class="btn ghost" type="button" id="qrPaste">Paste</button></div></div>
       </div></li>

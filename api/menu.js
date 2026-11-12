@@ -48,6 +48,7 @@ export default route(['GET'], async (req, res) => {
     v: v?.value || '1', build: BUILD, currency: CURRENCY, categories: CATEGORIES,
     accepting: s.accepting && ((online && !qr) || s.payCounter || qr),
     // With your own QR switched on, GCash/Maya go to your QR instead of PayMongo. (No card payments.)
+    qrWallets: qr ? [s.qr.image && 'gcash', s.qr.maya?.image && 'maya'].filter(Boolean) : [], // which of your QRs are uploaded
     payments: { qrph: qr, gcash: online && !qr, paymaya: online && !qr, counter: s.payCounter },
     delivery: deliveryReady(s)
       ? { enabled: true, lat: d.lat, lng: d.lng, maxKm: d.maxKm, tiers: d.tiers, minOrder: d.minOrder || 0, eta: d.eta }
