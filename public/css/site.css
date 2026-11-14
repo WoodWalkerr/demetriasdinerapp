@@ -867,7 +867,7 @@ body.sees-cost .field.cost-col{display:grid}
 .code-chip.on{border-color:var(--matcha);box-shadow:0 0 0 2px var(--matcha) inset}
 .code-chip[disabled]{opacity:.5;cursor:not-allowed}
 
-/* Settings â†’ Promo codes: website pop-up fields */
+/* Settings Ã¢â€ â€™ Promo codes: website pop-up fields */
 .popup-fields{flex:1 1 100%;display:grid;gap:8px;padding:10px 12px;border:1px dashed var(--line);border-radius:12px}
 .popup-more{display:flex;flex-wrap:wrap;gap:10px}
 .popup-more .field{flex:1 1 220px;margin:0}
@@ -1163,3 +1163,19 @@ body.sees-cost .field.cost-col{display:grid}
 .pp-gate input[type=email]{text-transform:none;letter-spacing:normal;width:100%;padding:12px 14px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:400 16px/1.2 inherit;font-family:inherit}
 .pp-gate input[type=email]::placeholder{text-transform:none;color:var(--muted)}
 .pp-gate input[type=email]:focus{outline:2px solid var(--matcha);outline-offset:1px}
+/* ---------- Staff â†’ Products â†’ Categories ---------- */
+.cats-box{margin:0 0 14px}
+.cats-box summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline;font-size:16px}
+.cats-box summary::-webkit-details-marker{display:none}
+.cats-box summary::after{content:"â–¾";margin-left:auto;color:var(--muted)}
+.cats-box[open] summary::after{content:"â–´"}
+.cat-list{list-style:none;margin:12px 0;padding:0;display:grid;gap:6px}
+.cat-list li{display:grid;grid-template-columns:28px minmax(0,1fr) 120px 90px auto;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:6px 10px}
+.cat-n{width:24px;height:24px;border-radius:50%;background:var(--surface);display:grid;place-items:center;font:600 12px var(--mono)}
+.cat-list .cell{width:100%;min-width:0}
+.cat-btns{display:flex;gap:4px;align-items:center}
+.cat-btns button[data-cmv]{width:34px;height:34px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font-size:16px;cursor:pointer}
+.cat-btns button:disabled{opacity:.35;cursor:default}
+.cat-add{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:10px;align-items:end}
+.cat-add .btn{justify-content:center}
+@media (max-width:640px){.cat-list li{grid-template-columns:24px minmax(0,1fr) auto;row-gap:6px}.cat-list li [data-ckind]{grid-column:2}.cat-count{grid-column:3;text-align:right}.cat-btns{grid-column:1/-1;justify-content:flex-end}.cat-add{grid-template-columns:1fr}}

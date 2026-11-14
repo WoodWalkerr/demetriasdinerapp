@@ -16,6 +16,7 @@ import { codes } from '../lib/staff/codes.js';
 import { deals } from '../lib/staff/deals.js';
 import { loyalty } from '../lib/staff/loyalty.js';
 import { subscribers } from '../lib/staff/subscribers.js';
+import { categories } from '../lib/staff/categories.js';
 
 const ROUTES = {
   login:    [['GET', 'POST'], login],
@@ -44,6 +45,7 @@ const ROUTES = {
   deals:       [['GET', 'POST', 'PUT', 'DELETE'], deals],
   loyalty:     [['GET', 'POST'], loyalty],
   subscribers: [['GET', 'DELETE'], subscribers],
+  categories:  [['GET', 'POST', 'PUT', 'DELETE'], categories],
 };
 const wrapped = Object.fromEntries(Object.entries(ROUTES).map(([k, [methods, fn]]) => [k, route(methods, async (req, res) => { await ensureSchema(); return fn(req, res); })]));
 

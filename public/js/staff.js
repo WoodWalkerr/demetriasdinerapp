@@ -15,7 +15,7 @@
   const STATUS = { new: 'New', making: 'Making', ready: 'Ready', delivering: 'Out for delivery', done: 'Done', cancelled: 'Cancelled' };
   let CAT = {}; // category names come from the server (lib/menu.js)
   const FOOD_CATS = ['silog', 'snacks', 'food', 'pastries'];
-  const kindOf = (cat) => (FOOD_CATS.includes(cat) ? 'food' : cat === 'others' ? 'plain' : 'drink');
+  const kindOf = (cat) => window.__catKinds?.[cat] || (FOOD_CATS.includes(cat) ? 'food' : cat === 'others' ? 'plain' : 'drink'); // your categories' types come from the server
   const groupsFor = (cat) => ({ food: ['food', 'packaging'], drink: ['drink', 'packaging'], plain: [] })[kindOf(cat)];
   const pct = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${v}%`);
   // Happy hour: same rules as the server (lib/time.js). The server always re-checks the price.
@@ -248,7 +248,7 @@
 
   // ===================================================================== catalog + settings
   async function loadCatalog() {
-    try { catalog = await api('/api/staff/products'); CAT = catalog.categories || CAT; document.body.classList.toggle('sees-cost', !!catalog.seesCost); renderPosMenu(); if (!$('#view-products').hidden) renderProducts(); } catch (e) { fail(e); }
+    try { catalog = await api('/api/staff/products'); CAT = catalog.categories || CAT; window.__catKinds = catalog.categoryKinds || {}; document.body.classList.toggle('sees-cost', !!catalog.seesCost); renderPosMenu(); if (!$('#view-products').hidden) renderProducts(); } catch (e) { fail(e); }
   }
   async function loadSettings() {
     try { settings = await api('/api/staff/settings'); if (!$('#view-settings').hidden) renderSettings(); } catch (e) { fail(e); }
@@ -966,7 +966,15 @@
   $$('[data-ptab]').forEach(b => b.onclick = () => { ptab = b.dataset.ptab; $$('[data-ptab]').forEach(x => x.setAttribute('aria-pressed', x === b)); ['items', 'addons', 'log'].forEach(t => { $('#pt-' + t).hidden = t !== ptab; }); });
   function renderProducts() {
     const cats = catalog.categories || {};
-    if (!$('#pcat').options.length) { $('#pcat').innerHTML = '<option value="">All</option>' + Object.entries(cats).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''); $('#npCat').innerHTML = Object.entries(cats).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join(''); }
+    const sig = JSON.stringify(cats);
+    if ($('#pcat').dataset.sig !== sig) { // rebuild when categories are added, renamed or moved
+      const pv = $('#pcat').value, nv = $('#npCat').value;
+      $('#pcat').innerHTML = '<option value="">All</option>' + Object.entries(cats).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+      $('#npCat').innerHTML = Object.entries(cats).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('') + '<option value="__new">＋ New category…</option>';
+      $('#pcat').value = cats[pv] ? pv : ''; if (cats[nv]) $('#npCat').value = nv;
+      $('#pcat').dataset.sig = sig; toggleNewCat();
+    }
+    renderCats();
     const q = $('#pq').value.trim().toLowerCase(), c = $('#pcat').value, low = $('#plow').checked, nocost = $('#pnocost').checked;
     const ep = can('edit_prices'), inv = can('inventory'), sc = !!catalog.seesCost;
     $('#prodRows').innerHTML = catalog.products.filter(p => (!c || p.cat === c) && (!q || p.name.toLowerCase().includes(q)) && (!low || p.soldOut || (p.stock != null && p.stock <= p.lowStock)) && (!nocost || p.cost == null)).map(p => `
@@ -1045,9 +1053,49 @@
     e.preventDefault(); const [qty, reason] = $$('input', e.target).map(i => i.value);
     try { const p = await api('/api/staff/stock', { method: 'POST', body: { ...stockReq, qty: +qty, reason } }); toast(`${p.name}: ${p.stock} in stock`); loadCatalog(); } catch (err) { fail(err); }
   });
+  // ---------- Categories: add, rename, type, order (website + "All" + POS follow this order)
+  let catList = [];
+  async function loadCats() { try { catList = (await api('/api/staff/categories')).list; } catch {} renderCats(); }
+  function renderCats() {
+    const ep = can('edit_prices'), list = catList.length ? catList : Object.entries(catalog?.categories || {}).map(([key, label]) => ({ key, label, kind: kindOf(key), products: (catalog.products || []).filter(p => p.cat === key).length }));
+    const fa = document.activeElement; if (fa?.closest?.('#catRows') && fa.matches('input')) return; // don't redraw while typing a name
+    $('#catRows').innerHTML = list.map((c, i) => `<li data-ck="${esc(c.key)}"><span class="cat-n">${i + 1}</span>
+      ${ep ? `<input class="cell" data-cl value="${esc(c.label)}" maxlength="40" aria-label="Category name">` : `<b>${esc(c.label)}</b>`}
+      ${ep ? `<select class="cell" data-ckind aria-label="Type">${[['drink', 'Drink'], ['food', 'Food'], ['plain', 'Other']].map(([k, v]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select>` : `<span class="hint">${c.kind}</span>`}
+      <span class="hint cat-count">${c.products} product${c.products === 1 ? '' : 's'}</span>
+      ${ep ? `<span class="cat-btns"><button type="button" data-cmv="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-cmv="1" ${i === list.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button><button type="button" class="linkbtn bad" data-cdel ${c.products ? 'disabled title="Move or delete its products first"' : ''}>Delete</button></span>` : ''}</li>`).join('');
+  }
+  const saveCats = async (list, msg) => { try { catList = (await api('/api/staff/categories', { method: 'PUT', body: { list } })).list; toast(msg); loadCatalog(); } catch (err) { fail(err); loadCats(); } };
+  const curList = () => catList.map(c => ({ key: c.key, label: c.label, kind: c.kind }));
+  $('#catRows').addEventListener('click', e => {
+    const li = e.target.closest('[data-ck]'); if (!li) return; const i = catList.findIndex(c => c.key === li.dataset.ck);
+    const mv = e.target.closest('[data-cmv]');
+    if (mv) { const j = i + +mv.dataset.cmv, l = curList(); if (j < 0 || j >= l.length) return; [l[i], l[j]] = [l[j], l[i]]; return saveCats(l, `Moved ${catList[i].label} ${+mv.dataset.cmv < 0 ? 'up' : 'down'}`); }
+    if (e.target.closest('[data-cdel]')) {
+      if (!confirm(`Delete the category "${catList[i].label}"?`)) return;
+      api('/api/staff/categories', { method: 'DELETE', body: { key: li.dataset.ck } }).then(r => { catList = r.list; toast('Category deleted'); loadCatalog(); }).catch(err => fail(err));
+    }
+  });
+  $('#catRows').addEventListener('change', e => {
+    const li = e.target.closest('[data-ck]'); if (!li) return; const l = curList(), c = l.find(x => x.key === li.dataset.ck);
+    if (e.target.matches('[data-cl]')) { const v = e.target.value.trim(); if (!v || v === c.label) { e.target.value = c.label; return; } c.label = v; saveCats(l, `Renamed to ${v}`); }
+    if (e.target.matches('[data-ckind]')) { c.kind = e.target.value; saveCats(l, `${c.label}: type changed`); }
+  });
+  $('#catAddForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    try { const r = await api('/api/staff/categories', { method: 'POST', body: { label: $('#caName').value, kind: $('#caKind').value } }); catList = r.list; e.target.reset(); toast(`${catList[0].label} added at the top. Use ↑ ↓ to move it.`); loadCatalog(); } catch (err) { fail(err); }
+  });
+  $('#catsBox').addEventListener('toggle', () => { if ($('#catsBox').open) loadCats(); });
+  function toggleNewCat() { const on = $('#npCat').value === '__new'; $$('.np-new').forEach(x => { x.hidden = !on; }); if (on) $('#npNewCat').focus(); }
+  $('#npCat').addEventListener('change', toggleNewCat);
   $('#addProdForm').addEventListener('submit', async e => {
     e.preventDefault();
-    try { const p = await api('/api/staff/products', { method: 'POST', body: { name: $('#npName').value, cat: $('#npCat').value, price: $('#npPrice').value === '' ? null : $('#npPrice').value, ...(catalog.seesCost ? { cost: $('#npCost').value === '' ? null : $('#npCost').value } : {}) } }); e.target.reset(); toast(`${p.name} added`); loadCatalog(); } catch (err) { fail(err); }
+    let catKey = $('#npCat').value; const isNew = catKey === '__new';
+    if (isNew) { // make the category first, then the product in it
+      try { const r = await api('/api/staff/categories', { method: 'POST', body: { label: $('#npNewCat').value, kind: $('#npNewKind').value } }); catList = r.list; catKey = r.list[0].key; }
+      catch (err) { return fail(err); }
+    }
+    try { const p = await api('/api/staff/products', { method: 'POST', body: { name: $('#npName').value, cat: catKey, price: $('#npPrice').value === '' ? null : $('#npPrice').value, ...(catalog.seesCost ? { cost: $('#npCost').value === '' ? null : $('#npCost').value } : {}) } }); e.target.reset(); toast(`${p.name} added${isNew ? ' in your new category' : ''}`); await loadCatalog(); if (CAT[catKey]) $('#npCat').value = catKey; toggleNewCat(); } catch (err) { fail(err); }
   });
   $('#addonRows').addEventListener('change', async e => {
     const tr = e.target.closest('[data-aid]'), f = e.target.dataset.af; if (!tr || !f) return;

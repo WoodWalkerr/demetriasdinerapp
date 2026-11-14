@@ -186,7 +186,7 @@
     boba: 'Boba Tea', fruitlatte: 'Fruit Latte', soda: 'Fruit Soda', silog: 'Silog Meals', snacks: 'Snacks', food: 'Meals', pastries: 'Pastries', others: 'Others' };
   const ART = Object.fromEntries(menu.map(m => [slug(m.n), m]));
   const FOOD_CATS = ['silog', 'snacks', 'food', 'pastries'];
-  const kindOf = (cat) => (FOOD_CATS.includes(cat) ? 'food' : cat === 'others' ? 'plain' : 'drink');
+  const kindOf = (cat) => window.__catKinds?.[cat] || (FOOD_CATS.includes(cat) ? 'food' : cat === 'others' ? 'plain' : 'drink'); // types of your own categories come with the menu
   const groupsFor = (cat) => ({ food: ['food', 'packaging'], drink: ['drink', 'packaging'], plain: [] })[kindOf(cat)];
   const GROUP_LABEL = { drink: 'Add-ons', food: 'Add-ons', packaging: 'Packaging' };
 
@@ -1457,7 +1457,8 @@
   setTimeout(hideSplash, 6000); // slow or no signal: show the saved menu instead of waiting
   function apply(d) {
     cat = d; byId = Object.fromEntries(d.items.map(i => [i.id, i])); addonById = Object.fromEntries(d.addons.map(a => [a.id, a]));
-    if (d.categories) CAT_LABEL = d.categories;
+    if (d.categories) CAT_LABEL = d.categories; // in your order (Staff → Products → Categories)
+    window.__catKinds = d.categoryKinds || {};
     renderFilters();
     apiState = 'ready';
     if (pin && cat.delivery.enabled) pin = { ...quote(pin.lat, pin.lng) };

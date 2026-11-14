@@ -1,5 +1,6 @@
 import { route, BUILD } from '../lib/http.js';
-import { CURRENCY, CATEGORIES } from '../lib/menu.js';
+import { CURRENCY, catObject } from '../lib/menu.js';
+import { byCategory } from '../lib/staff/catalog.js';
 import { ensureSchema, sql, batch, settingsQuery, versionQuery, shapeSettings, qrReady, deliveryReady } from '../lib/db.js';
 import { productsQuery, addonsQuery, publicProduct, publicAddon, publicPromo } from '../lib/pricing.js';
 import { openState, upcomingWindows, TZ } from '../lib/time.js';
@@ -45,7 +46,7 @@ export default route(['GET'], async (req, res) => {
   const now = new Date();
   const st = openState(s.hours, now);
   res.status(200).json({
-    v: v?.value || '1', build: BUILD, currency: CURRENCY, categories: CATEGORIES,
+    v: v?.value || '1', build: BUILD, currency: CURRENCY, categories: catObject(s.categories), categoryKinds: Object.fromEntries(s.categories.map((c) => [c.key, c.kind])),
     accepting: s.accepting && ((online && !qr) || s.payCounter || qr),
     // With your own QR switched on, GCash/Maya go to your QR instead of PayMongo. (No card payments.)
     qrWallets: qr ? [s.qr.image && 'gcash', s.qr.maya?.image && 'maya'].filter(Boolean) : [], // which of your QRs are uploaded
@@ -68,7 +69,7 @@ export default route(['GET'], async (req, res) => {
     loyalty: publicLoyalty(s.loyalty), // stamp card rules (no customer data)
     newsletter: publicNews(s.newsletter), // sign-up pop-up text (the welcome code is only given after signing up)
     upsell,                             // "Add something?" cart suggestions
-    items: products.map(publicProduct),
+    items: byCategory(products, s.categories).map(publicProduct), // in your category order (Staff → Products → Categories)
     addons: addons.filter((a) => a.active).map(publicAddon),
   });
 });
