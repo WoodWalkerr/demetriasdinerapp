@@ -19,7 +19,7 @@
     <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--matcha)"/><path d="M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z" fill="#111"/><circle cx="16.2" cy="21.5" r="2.6" fill="#FFF9E8"/><circle cx="23.8" cy="21.5" r="2.6" fill="#FFF9E8"/></svg>
     <span>demetria's<br><small>employee portal</small></span>
   </a>
-  <div class="pt-head-r" id="ptUserBar" hidden><a class="linkbtn" href="/staff" id="ptStaffLink" hidden>Staff screens</a><button class="btn ghost sm" type="button" id="ptLogout">Sign out</button></div>
+  <div class="pt-head-r" id="ptUserBar" hidden><button class="pt-bell" type="button" id="ptBell" aria-label="Notifications">🔔<b id="ptBellN" hidden>0</b></button><a class="linkbtn" href="/staff" id="ptStaffLink" hidden>Staff screens</a><button class="btn ghost sm" type="button" id="ptLogout">Sign out</button></div>
 </header>
 
 <!-- sign in -->
@@ -74,6 +74,14 @@
     <p class="hint-sm pt-loc-hint" id="locHint"></p>
   </section>
 
+  <section class="box pt-sched" id="sSched">
+    <div class="pt-row-head"><h2>My schedule</h2><div class="pt-tabs" role="tablist"><button type="button" data-sv="week" aria-pressed="true">This week</button><button type="button" data-sv="month" aria-pressed="false">This month</button></div></div>
+    <p class="pt-alert info" id="sUpcoming" hidden></p>
+    <div class="pt-shift" id="sCurrent"></div>
+    <div class="pt-week" id="sWeek"></div>
+    <div class="pt-cal" id="sMonth" hidden></div>
+  </section>
+
   <section class="box">
     <div class="pt-row-head"><h2>My month</h2><input type="month" id="mPick" aria-label="Month"></div>
     <div class="pt-stats" id="mStats"></div>
@@ -92,6 +100,14 @@
     </form>
   </details>
 </main>
+
+<dialog id="ntDlg" class="nt-dlg" aria-labelledby="ntTitle">
+  <div class="dlg">
+    <div class="qr-head"><h3 id="ntTitle">🗓️ Schedule update</h3><button class="x" type="button" id="ntClose" aria-label="Close">×</button></div>
+    <div id="ntList"></div>
+    <button class="btn" type="button" id="ntOk">Got it</button>
+  </div>
+</dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="/js/portal.js" defer></script>

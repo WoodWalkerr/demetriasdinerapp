@@ -49,6 +49,8 @@
         <a href="#finance" data-tab="finance" data-perm="finance">Finance</a>
         <a href="#settings" data-tab="settings" data-perm="settings">Settings</a>
         <a href="#attendance" data-tab="attendance" data-perm="attendance">Attendance</a>
+        <a href="#schedules" data-tab="schedules" data-perm="attendance">Schedules</a>
+        <a href="#payroll" data-tab="payroll" data-perm="payroll">Payroll</a>
         <a href="#users" data-tab="users" data-perm="users">Users</a>
         <a href="#activity" data-tab="activity" data-perm="audit">Activity</a>
       </nav>
@@ -608,10 +610,10 @@
         <div class="row-btns"><a class="btn ghost" href="/portal" target="_blank" rel="noopener">Open the employee portal ↗</a></div></div>
       <p class="pt-alert warn" id="attOffNote" hidden>Attendance is <b>off</b>. Set the rules and shop location below, then switch it on.</p>
       <div class="att-kpis" id="attKpis"></div>
-      <div class="box">
-        <div class="view-head" style="margin:0 0 10px"><h3 style="margin:0">Today <small class="hint" id="attToday"></small></h3><button class="btn ghost sm" type="button" id="attRefresh">↻ Refresh</button></div>
+      <details class="box att-fold" id="attTodayBox" open>
+        <summary><b>Today</b> <small class="hint" id="attToday"></small><span class="fold-r"><button class="btn ghost sm" type="button" id="attRefresh">↻ Refresh</button></span></summary>
         <div class="table-wrap"><table class="otable att-table"><thead><tr><th>Employee</th><th>Status</th><th>Time in</th><th>Time out</th><th class="num">Hours</th><th>Notes</th><th></th></tr></thead><tbody id="attTodayRows"></tbody></table></div>
-      </div>
+      </details>
 
       <div class="box" style="margin-top:16px">
         <h3>Records &amp; DTR reports</h3>
@@ -623,22 +625,17 @@
         </div>
         <div class="row-btns att-quick"><span class="hint">Quick:</span><button class="linkbtn" type="button" data-arq="week">This week</button><button class="linkbtn" type="button" data-arq="half1">1st–15th</button><button class="linkbtn" type="button" data-arq="half2">16th–end</button><button class="linkbtn" type="button" data-arq="month">This month</button><button class="linkbtn" type="button" data-arq="last">Last month</button></div>
         <div class="table-wrap"><table class="otable att-table"><thead><tr><th>Employee</th><th class="num">Present</th><th class="num">Late</th><th class="num">Absent</th><th class="num">Rest</th><th class="num">No time-out</th><th class="num">Hours worked</th><th class="num">Undertime</th><th class="num">Overtime</th><th class="num">Outside area</th></tr></thead><tbody id="arSummary"></tbody></table></div>
+        <div class="row-btns att-fold-btns"><span class="hint">Daily records (tap a name to open):</span><button class="linkbtn" type="button" id="arOpenAll">Open all</button><button class="linkbtn" type="button" id="arCloseAll">Close all</button></div>
         <div id="arDetail"></div>
       </div>
 
       <details class="box att-settings" id="attSetBox" style="margin-top:16px">
-        <summary><b>⚙️ Rules &amp; shop location</b> <span class="hint">· time-in deadline, 10-hour day, late, location check</span></summary>
+        <summary><b>⚙️ Attendance rules &amp; shop location</b> <span class="hint">· on/off, late policy, location check, who records attendance</span></summary>
         <label class="switchrow" for="asOn" style="margin-top:12px"><input type="checkbox" class="toggle" id="asOn"> Attendance on (employees can time in / out)</label>
+        <p class="pt-alert info">🗓️ Time in / time out, required hours, grace, time-in deadline, break and days off are now set per schedule in the <a href="#schedules"><b>Schedules</b></a> tab (the default is <b>Regular</b>, 9 AM – 7 PM, 10 hours).</p>
         <div class="row4">
-          <div class="field"><label for="asStart">Start time</label><input id="asStart" type="time"></div>
-          <div class="field"><label for="asGrace">Grace (minutes)</label><input id="asGrace" type="number" min="0" max="240"></div>
-          <div class="field"><label for="asDeadline">Time-in deadline</label><input id="asDeadline" type="time"></div>
-          <div class="field"><label for="asAfter">Time-in after the deadline counts as</label><select id="asAfter"><option value="absent">Absent</option><option value="late">Late</option></select></div>
-          <div class="field"><label for="asHours">Required hours per day</label><input id="asHours" type="number" min="1" max="16" step="0.5"></div>
-          <div class="field"><label for="asBreak">Unpaid break (minutes)</label><input id="asBreak" type="number" min="0" max="240"></div>
+          <div class="field"><label for="asAfter">A time-in after the deadline counts as</label><select id="asAfter"><option value="absent">Absent</option><option value="late">Late</option></select></div>
         </div>
-        <div class="promo-row"><span class="lbl">Rest days</span><div class="chips" id="asRest"><button type="button" data-rd="0" aria-pressed="false">Sun</button><button type="button" data-rd="1" aria-pressed="false">Mon</button><button type="button" data-rd="2" aria-pressed="false">Tue</button><button type="button" data-rd="3" aria-pressed="false">Wed</button><button type="button" data-rd="4" aria-pressed="false">Thu</button><button type="button" data-rd="5" aria-pressed="false">Fri</button><button type="button" data-rd="6" aria-pressed="false">Sat</button></div></div>
-        <p class="hint">After <b>start + grace</b> = Late. No time-in by the <b>deadline</b> = Absent (automatically). Hours = time-out − time-in − break; less than required = Undertime, more = Overtime.</p>
         <h4 class="tiers-h">Location check</h4>
         <label class="switchrow" for="asLoc"><input type="checkbox" class="toggle" id="asLoc"> Employees must share their location to time in / out</label>
         <div class="row4">
@@ -648,10 +645,68 @@
         <p class="hint" id="asShop">Shop location: …</p>
         <div class="row-btns"><button class="btn ghost" type="button" id="asHere">📍 Use this device's location (stand inside the shop)</button><button class="linkbtn" type="button" id="asUseStore">Use the store pin from Delivery settings</button></div>
         <div class="row-btns" style="margin-top:12px"><button class="btn" type="button" id="asSave">Save rules</button></div>
-        <h4 class="tiers-h">Employee schedules</h4>
-        <p class="hint" style="margin:4px 0 8px">Everyone follows the rules above unless you change it here. <b>Track</b> off = this person doesn't record attendance (e.g. the owner).</p>
-        <div class="table-wrap"><table class="otable att-sched"><thead><tr><th>Employee</th><th>Track</th><th>Start</th><th>Deadline</th><th>Hours</th><th>Rest days</th><th></th></tr></thead><tbody id="asSched"></tbody></table></div>
+        <h4 class="tiers-h">Who records attendance</h4>
+        <p class="hint" style="margin:4px 0 8px"><b>Track</b> off = this person doesn't time in / out (e.g. the owner). Their work schedule is in the <a href="#schedules">Schedules</a> tab.</p>
+        <div class="table-wrap"><table class="otable att-sched"><thead><tr><th>Employee</th><th>Role</th><th>Records attendance</th></tr></thead><tbody id="asSched"></tbody></table></div>
         <p class="hint">New employees: create their account in <b>Users</b> (role <b>Employee</b>), give them the username + temporary password, and they sign in at <b>/portal</b>.</p>
+      </details>
+    </div>
+  </section>
+
+  <!-- SCHEDULES -->
+  <section class="view" id="view-schedules" aria-label="Work schedules" hidden>
+    <div class="wrap">
+      <div class="view-head"><div><h1>Schedules</h1><p class="note left">Make shifts, then assign them to one or many employees from a date. Everyone has exactly one schedule per day; employees get a pop-up in their portal when theirs changes.</p></div>
+        <div class="row-btns"><button class="btn" type="button" id="scNew">＋ New schedule</button></div></div>
+      <div class="sc-cards" id="scCards"></div>
+
+      <div class="box" style="margin-top:16px">
+        <div class="view-head" style="margin:0 0 10px"><h3 style="margin:0">Week view</h3>
+          <div class="row-btns"><button class="btn ghost sm" type="button" id="scPrev">← Previous</button><button class="btn ghost sm" type="button" id="scThis">This week</button><button class="btn ghost sm" type="button" id="scNext">Next →</button></div></div>
+        <div class="sc-assign" id="scAssignBar">
+          <span><b id="scSelCount">0</b> selected</span>
+          <div class="field"><label for="scAssignSched">Assign schedule</label><select id="scAssignSched"></select></div>
+          <div class="field"><label for="scAssignFrom">Starting</label><input id="scAssignFrom" type="date"></div>
+          <button class="btn" type="button" id="scAssignGo">Assign</button>
+          <p class="note" id="scAssignNote" role="status"></p>
+        </div>
+        <div class="table-wrap"><table class="otable sc-grid"><thead id="scGridHead"></thead><tbody id="scGrid"></tbody></table></div>
+        <p class="hint">Tick employees (or the box at the top for everyone), choose a schedule and a start date, then <b>Assign</b>. It replaces what they had from that day on. Days inside a finalized payroll can't change.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAYROLL (admins only) -->
+  <section class="view" id="view-payroll" aria-label="Payroll" hidden>
+    <div class="wrap">
+      <div class="view-head"><div><h1>Payroll</h1><p class="note left">🔒 Confidential: only people with the Payroll permission see this. Computed from the DTR; you can change any amount.</p></div></div>
+      <div class="box pay-top">
+        <div class="pay-period">
+          <button class="btn ghost sm" type="button" id="pyPrev" aria-label="Previous period">←</button>
+          <div><b id="pyLabel">…</b><small class="hint" id="pyPay"></small></div>
+          <button class="btn ghost sm" type="button" id="pyNext" aria-label="Next period">→</button>
+          <span class="att-chip" id="pyStatus">…</span>
+        </div>
+        <div class="row-btns">
+          <button class="btn" type="button" id="pyFinal">Finalize</button>
+          <button class="btn ghost" type="button" id="pyReopen" hidden>Reopen</button>
+          <a class="btn ghost" id="pyPrint" href="#" target="_blank" rel="noopener">🖨️ Print summary</a>
+          <a class="btn ghost" id="pyXlsx" href="#" download>📊 Excel</a>
+          <a class="btn ghost" id="pyPdf" href="#" download>📄 PDF</a>
+        </div>
+      </div>
+      <p class="pt-alert warn" id="pyWarn" hidden></p>
+      <div class="att-kpis" id="pyKpis"></div>
+      <div class="table-wrap"><table class="otable pay-table"><thead><tr><th>Employee</th><th class="num">Days</th><th class="num">Daily rate</th><th class="num">Basic</th><th class="num">OT</th><th class="num">Additions</th><th class="num">Deductions</th><th class="num">Net pay</th><th></th></tr></thead><tbody id="pyRows"></tbody><tfoot id="pyFoot"></tfoot></table></div>
+
+      <details class="box att-fold" id="pyRatesBox" style="margin-top:16px">
+        <summary><b>💵 Salary rates</b> <span class="hint">· daily rate, overtime %, late / undertime deductions per employee</span></summary>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Employee</th><th class="num">Daily rate (₱)</th><th class="num">Per hour</th><th class="num">Overtime %</th><th>Deduct late</th><th>Deduct undertime</th><th></th></tr></thead><tbody id="pyRates"></tbody></table></div>
+        <p class="hint">Per hour = daily rate ÷ the hours of their schedule (10 hours on Regular). Overtime pay = overtime hours × per hour × overtime % (125% is the usual rate). A new rate applies to payrolls that aren't finalized yet.</p>
+      </details>
+      <details class="box att-fold" id="pyHistBox" style="margin-top:16px">
+        <summary><b>🗂️ Past payrolls</b></summary>
+        <div id="pyHist"></div>
       </details>
     </div>
   </section>
@@ -665,7 +720,7 @@
           <option value="">Everything</option><option value="price">Price &amp; cost changes</option><option value="product">Products, add-ons, photos</option>
           <option value="order">Voids, refunds, cancels, discounts, payments</option><option value="cash">Shifts &amp; cash in/out</option>
           <option value="expense">Expenses</option><option value="stock">Stock</option><option value="settings">Settings, hours, promos</option>
-          <option value="users">Staff accounts</option><option value="attendance">Attendance (DTR)</option><option value="codes">Promo codes &amp; deals</option><option value="login">Sign-ins</option></select></div>
+          <option value="users">Staff accounts</option><option value="attendance">Attendance (DTR) &amp; schedules</option><option value="payroll">Payroll</option><option value="codes">Promo codes &amp; deals</option><option value="login">Sign-ins</option></select></div>
         <div class="field"><label for="acUser">Who</label><select id="acUser"><option value="">Everyone</option></select></div>
         <div class="field"><label for="acFrom">From</label><input id="acFrom" type="date"></div>
         <div class="field"><label for="acTo">To</label><input id="acTo" type="date"></div>
@@ -731,6 +786,32 @@
     <div id="payPanel"></div>
     <button class="btn" type="submit" id="paySubmit" style="justify-content:center">Paid · mark as picked up</button>
     <p class="note" id="payNote" role="status"></p>
+  </form>
+</dialog>
+
+<dialog id="scDlg" aria-labelledby="scTitle">
+  <form class="dlg" id="scForm" novalidate>
+    <div class="qr-head"><h3 id="scTitle">New schedule</h3><button class="x" type="button" id="scClose" aria-label="Close">×</button></div>
+    <div class="row2">
+      <div class="field"><label for="sfName">Name</label><input id="sfName" maxlength="40" placeholder="e.g. Opening shift"></div>
+      <div class="field"><label for="sfColor">Color</label><input id="sfColor" type="color" value="#066B23"></div>
+    </div>
+    <div class="row4">
+      <div class="field"><label for="sfStart">Time in</label><input id="sfStart" type="time" value="09:00"></div>
+      <div class="field"><label for="sfEnd">Time out</label><input id="sfEnd" type="time" value="19:00"></div>
+      <div class="field"><label for="sfHours">Required hours</label><input id="sfHours" type="number" min="1" max="16" step="0.5" value="10"></div>
+      <div class="field"><label for="sfBreak">Unpaid break (min)</label><input id="sfBreak" type="number" min="0" max="240" value="0"></div>
+      <div class="field"><label for="sfGrace">Grace (min)</label><input id="sfGrace" type="number" min="0" max="120" value="15"></div>
+      <div class="field"><label for="sfDeadline">Time-in deadline</label><input id="sfDeadline" type="time" value="11:00"></div>
+    </div>
+    <div class="promo-row"><span class="lbl">Days off</span><div class="chips" id="sfDays"><button type="button" data-sdo="0" aria-pressed="false">Sun</button><button type="button" data-sdo="1" aria-pressed="false">Mon</button><button type="button" data-sdo="2" aria-pressed="false">Tue</button><button type="button" data-sdo="3" aria-pressed="false">Wed</button><button type="button" data-sdo="4" aria-pressed="false">Thu</button><button type="button" data-sdo="5" aria-pressed="false">Fri</button><button type="button" data-sdo="6" aria-pressed="false">Sat</button></div></div>
+    <div class="row2">
+      <div class="field"><label for="sfLoc">Work location</label><input id="sfLoc" maxlength="60" placeholder="e.g. Main shop"></div>
+      <div class="field"><label>Location pin <span class="opt-t">(optional: for a different branch)</span></label><div class="row-btns"><button class="btn ghost sm" type="button" id="sfHere">📍 Use this device</button><button class="linkbtn" type="button" id="sfPinClear">Use the shop's</button></div><small class="hint" id="sfPin"></small></div>
+    </div>
+    <p class="hint" id="sfSummary"></p>
+    <div class="dlg-foot"><button class="btn" type="submit" id="sfSave">Save schedule</button></div>
+    <p class="note" id="sfNote" role="status"></p>
   </form>
 </dialog>
 

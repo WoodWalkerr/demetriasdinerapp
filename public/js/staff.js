@@ -236,14 +236,14 @@
   $$('[data-theme-set]').forEach(b => b.onclick = () => setTheme(b.dataset.themeSet));
 
   // ===================================================================== tabs
-  const TABS = ['board', 'pos', 'orders', 'shift', 'products', 'sales', 'finance', 'settings', 'users', 'activity', 'attendance'];
+  const TABS = ['board', 'pos', 'orders', 'shift', 'products', 'sales', 'finance', 'settings', 'users', 'activity', 'attendance', 'schedules', 'payroll'];
   function route() {
     let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'board';
     const link = $(`.tabs a[data-tab="${tab}"]`);
     if (link?.hidden) tab = $$('.tabs a').find(a => !a.hidden)?.dataset.tab || 'board'; // first tab this person may use
     TABS.forEach(t => { $('#view-' + t).hidden = t !== tab; });
     $$('.tabs a').forEach(a => a.dataset.tab === tab ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); loadDeals(); }, pos: renderPosMenu, activity: loadActivity, attendance: loadAttendance }[tab] || (() => {}))();
+    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); loadDeals(); }, pos: renderPosMenu, activity: loadActivity, attendance: loadAttendance, schedules: () => loadSchedules(), payroll: () => { loadPayroll(pyPeriod); loadPyHist(); } }[tab] || (() => {}))();
   }
   window.addEventListener('hashchange', route);
 
@@ -279,7 +279,7 @@
       <td><button class="linkbtn" type="button" data-afix="${esc(user.id)}" data-adate="${att.today}">Fix</button>${openYesterday ? ` <button class="linkbtn" type="button" data-afix="${esc(user.id)}" data-adate="${addDaysStr(att.today, -1)}">Fix yesterday</button>` : ''}</td></tr>`).join('')
       || '<tr><td colspan="7" class="hint">No employees yet. Add them in Users (role: Employee).</td></tr>';
     const sel = $('#arUser'), cur = sel.value;
-    sel.innerHTML = '<option value="">Everyone</option>' + att.schedules.map(s => `<option value="${esc(s.user.id)}">${esc(s.user.name)}</option>`).join('');
+    sel.innerHTML = '<option value="">Everyone</option>' + att.schedules.filter(s => s.track).map(s => `<option value="${esc(s.user.id)}">${esc(s.user.name)}</option>`).join('');
     sel.value = att.schedules.some(s => s.user.id === cur) ? cur : '';
   }
   const addDaysStr = (s, n) => { const t = new Date(s + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
@@ -310,14 +310,18 @@
       <td class="num"><b>${aHm(t.workedMin)}</b></td><td class="num">${aHm(t.undertimeMin)}</td><td class="num">${aHm(t.overtimeMin)}</td><td class="num ${t.outside ? 'warn-t' : ''}">${t.outside}</td></tr>`).join('')
       || '<tr><td colspan="10" class="hint">No employees.</td></tr>';
     // daily records: one block per employee (newest first)
-    $('#arDetail').innerHTML = S.map(({ user, rows }) => `<h4 class="tiers-h" style="margin-top:16px">${esc(user.name)}</h4>
+    $('#arDetail').innerHTML = S.map(({ user, rows, summary: t }) => `<details class="att-emp" data-emp="${esc(user.id)}" ${S.length === 1 ? 'open' : ''}><summary><b>${esc(user.name)}</b>
+        <span class="hint">${t.present} present · ${t.late} late · ${t.absent} absent · ${aHm(t.workedMin)} worked${t.incomplete ? ` · <b class="warn-t">${t.incomplete} no time-out</b>` : ''}</span></summary>
       <div class="table-wrap"><table class="otable att-table"><thead><tr><th>Date</th><th>Status</th><th>Time in</th><th>Time out</th><th class="num">Hours</th><th class="num">Late</th><th class="num">Under</th><th class="num">Over</th><th>Notes</th><th></th></tr></thead><tbody>
       ${rows.filter(r => r.status !== 'future').slice().reverse().map(r => `<tr class="${r.status}"><td>${aDate(r.date)}</td><td>${aChip(r)}</td><td>${aTime(r.timeIn)}${aLoc(r, 'in')}</td><td>${aTime(r.timeOut)}${aLoc(r, 'out')}</td>
         <td class="num">${r.workedMin != null ? aHm(r.workedMin) : '—'}</td><td class="num">${r.lateMin ? r.lateMin + 'm' : ''}</td><td class="num">${r.undertimeMin ? aHm(r.undertimeMin) : ''}</td><td class="num">${r.overtimeMin ? aHm(r.overtimeMin) : ''}</td>
         <td><small>${aNotes(r)}</small></td><td><button class="linkbtn" type="button" data-afix="${esc(user.id)}" data-adate="${r.date}">${r.timeIn ? 'Fix' : 'Add'}</button></td></tr>`).join('')}
-      </tbody></table></div>`).join('');
+      </tbody></table></div></details>`).join('');
   }
   $('#arLoad').onclick = loadAttRange;
+  $('#arOpenAll').onclick = () => $$('#arDetail details').forEach(d => { d.open = true; });
+  $('#arCloseAll').onclick = () => $$('#arDetail details').forEach(d => { d.open = false; });
+  $('#attRefresh').addEventListener('click', e => e.preventDefault()); // inside <summary>: refresh, don't fold
   ['#arFrom', '#arTo', '#arUser'].forEach(s => $(s).addEventListener('change', attLinks));
   $('#arUser').addEventListener('change', loadAttRange);
   $('#attRefresh').onclick = loadAttendance;
@@ -331,7 +335,7 @@
     const uid = b.dataset.afix, date = b.dataset.adate, r = findRow(uid, date);
     afWho = uid;
     $('#afWho').textContent = att.schedules.find(s => s.user.id === uid)?.user.name || 'Employee';
-    $('#afDate').value = date; $('#afDate').max = att.today; $('#afIn').value = hhmmOf(r?.timeIn) || (att.schedules.find(s => s.user.id === uid)?.start || ''); $('#afOut').value = hhmmOf(r?.timeOut);
+    $('#afDate').value = date; $('#afDate').max = att.today; $('#afIn').value = hhmmOf(r?.timeIn) || r?.start || ''; $('#afOut').value = hhmmOf(r?.timeOut);
     $('#afWhy').value = ''; $('#afNote').textContent = ''; $('#afDel').hidden = !r?.timeIn;
     $('#attFixDlg').showModal(); setTimeout(() => $('#afWhy').focus(), 50);
   });
@@ -349,30 +353,22 @@
     catch (err) { $('#afNote').textContent = err.message; $('#afNote').classList.add('err'); }
   };
   // ---- rules + shop location + schedules
-  let asRest = [], asPoint;
   function renderAttSettings() {
     const s = att.settings;
     if (!document.activeElement?.closest?.('#attSetBox')) {
-      $('#asOn').checked = s.enabled; $('#asStart').value = s.start; $('#asGrace').value = s.graceMin; $('#asDeadline').value = s.deadline; $('#asAfter').value = s.afterDeadline;
-      $('#asHours').value = s.requiredHours; $('#asBreak').value = s.breakMin; $('#asLoc').checked = s.requireLocation; $('#asRadius').value = s.radiusM; $('#asBlock').checked = s.blockOutside;
-      asRest = [...s.restDays]; asPoint = undefined;
+      $('#asOn').checked = s.enabled; $('#asAfter').value = s.afterDeadline;
+      $('#asLoc').checked = s.requireLocation; $('#asRadius').value = s.radiusM; $('#asBlock').checked = s.blockOutside;
     }
-    $$('#asRest [data-rd]').forEach(b => b.setAttribute('aria-pressed', asRest.includes(+b.dataset.rd)));
     const sh = att.shop;
     $('#asShop').innerHTML = sh ? `Shop location: <b>${sh.lat.toFixed(5)}, ${sh.lng.toFixed(5)}</b> ${sh.from === 'delivery' ? '(the store pin from Delivery settings)' : '(set here)'} · <a href="https://www.google.com/maps?q=${sh.lat},${sh.lng}" target="_blank" rel="noopener">check on the map</a>`
       : '<b class="warn-t">No shop location yet.</b> Stand inside the shop and tap the button below (or set the store pin in Settings → Delivery). Until then, distances can\'t be checked.';
-    $('#asSched').innerHTML = att.schedules.map(x => `<tr data-asu="${esc(x.user.id)}"><td><b>${esc(x.user.name)}</b><small class="hint"> ${esc(x.user.role)}</small>${x.custom ? ' <small class="att-chip">own schedule</small>' : ''}</td>
-      <td><input type="checkbox" class="toggle" data-ast ${x.track ? 'checked' : ''} aria-label="Track attendance"></td>
-      <td><input class="cell" type="time" data-asf="start" value="${x.start}"></td><td><input class="cell" type="time" data-asf="deadline" value="${x.deadline}"></td>
-      <td><input class="cell num sm" type="number" min="1" max="16" step="0.5" data-asf="requiredHours" value="${x.requiredHours}"></td>
-      <td><div class="chips sm-chips">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => `<button type="button" data-asr="${i}" aria-pressed="${x.restDays.includes(i)}" title="${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}">${d}</button>`).join('')}</div></td>
-      <td><button class="btn sm" type="button" data-assave>Save</button> <button class="linkbtn" type="button" data-asreset ${x.custom ? '' : 'hidden'}>Use shop rules</button></td></tr>`).join('');
+    $('#asSched').innerHTML = att.schedules.map(x => `<tr data-asu="${esc(x.user.id)}"><td><b>${esc(x.user.name)}</b> <small class="hint">@${esc(x.user.username)}</small></td><td><small>${esc(x.user.role)}</small></td>
+      <td><label class="switchrow sm"><input type="checkbox" class="toggle" data-ast ${x.track ? 'checked' : ''}> ${x.track ? 'Yes' : 'No'}</label></td></tr>`).join('');
   }
-  $('#asRest').addEventListener('click', e => { const b = e.target.closest('[data-rd]'); if (!b) return; const d = +b.dataset.rd; asRest = asRest.includes(d) ? asRest.filter(x => x !== d) : [...asRest, d]; b.setAttribute('aria-pressed', asRest.includes(d)); });
   const saveAttSettings = async (extra = {}) => {
     try {
-      const r = await api('/api/staff/dtr', { method: 'PUT', body: { settings: { enabled: $('#asOn').checked, start: $('#asStart').value, graceMin: $('#asGrace').value, deadline: $('#asDeadline').value, afterDeadline: $('#asAfter').value,
-        requiredHours: $('#asHours').value, breakMin: $('#asBreak').value, restDays: asRest, requireLocation: $('#asLoc').checked, radiusM: $('#asRadius').value, blockOutside: $('#asBlock').checked, ...extra } } });
+      const r = await api('/api/staff/dtr', { method: 'PUT', body: { settings: { enabled: $('#asOn').checked, afterDeadline: $('#asAfter').value,
+        requireLocation: $('#asLoc').checked, radiusM: $('#asRadius').value, blockOutside: $('#asBlock').checked, ...extra } } });
       Object.assign(att, r); document.activeElement?.blur?.(); renderAttSettings(); renderAttToday(); toast('Attendance rules saved'); loadAttendance();
     } catch (err) { fail(err); }
   };
@@ -387,18 +383,215 @@
     }, e => toast(e.code === 1 ? 'Location is blocked for this site. Allow it in the browser settings.' : "Couldn't get the location. Try again."), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
   };
   $('#asUseStore').onclick = () => saveAttSettings({ lat: null });
-  $('#asSched').addEventListener('click', async e => {
-    const tr = e.target.closest('[data-asu]'); if (!tr) return;
-    const r = e.target.closest('[data-asr]'); if (r) { r.setAttribute('aria-pressed', r.getAttribute('aria-pressed') !== 'true'); return; }
-    const save = e.target.closest('[data-assave]'), reset = e.target.closest('[data-asreset]'); if (!save && !reset) return;
-    const s = att.settings, val = (k) => tr.querySelector(`[data-asf="${k}"]`).value;
-    const rest = [...tr.querySelectorAll('[data-asr]')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => +b.dataset.asr);
-    const body = reset ? { userId: tr.dataset.asu, track: tr.querySelector('[data-ast]').checked } : { userId: tr.dataset.asu, track: tr.querySelector('[data-ast]').checked,
-      ...(val('start') !== s.start ? { start: val('start') } : {}), ...(val('deadline') !== s.deadline ? { deadline: val('deadline') } : {}),
-      ...(+val('requiredHours') !== +s.requiredHours ? { requiredHours: val('requiredHours') } : {}), ...(JSON.stringify(rest) !== JSON.stringify([...s.restDays].sort()) ? { restDays: rest } : {}) };
-    try { const r2 = await api('/api/staff/dtr', { method: 'PUT', body: { schedule: body } }); Object.assign(att, r2); toast('Schedule saved'); loadAttendance(); } catch (err) { fail(err); }
+  $('#asSched').addEventListener('change', async e => {
+    const t = e.target.closest('[data-ast]'); if (!t) return;
+    try { const r2 = await api('/api/staff/dtr', { method: 'PUT', body: { schedule: { userId: t.closest('tr').dataset.asu, track: t.checked } } }); Object.assign(att, r2); toast(t.checked ? 'Now records attendance' : 'No longer records attendance'); loadAttendance(); }
+    catch (err) { fail(err); t.checked = !t.checked; }
   });
-  $('#asSched').addEventListener('change', async e => { if (e.target.matches('[data-ast]')) e.target.closest('tr').querySelector('[data-assave]').click(); });
+
+
+  // ===================================================================== SCHEDULES (permission: attendance)
+  let sc = null, scWeek = '', scSel = new Set(), scEdit = null, scPin;
+  const DAY3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const scLine = (x) => `${aT12(x.start)} – ${aT12(x.end)}`;
+  async function loadSchedules(week) {
+    try { sc = await api('/api/staff/schedules' + (week || scWeek ? `?week=${week || scWeek}` : '')); scWeek = sc.weekStart; renderSchedules(); }
+    catch (err) { fail(err); }
+  }
+  function renderSchedules() {
+    $('#scCards').innerHTML = sc.schedules.map(x => `<div class="sc-card" style="--sc:${esc(x.color)}">
+        <div class="sc-card-top"><b>${esc(x.name)}</b>${x.isDefault ? '<span class="att-chip ok">Default</span>' : ''}</div>
+        <div class="sc-time">${aT12(x.start)} – ${aT12(x.end)}</div>
+        <small>${x.requiredHours}h${x.breakMin ? ` + ${x.breakMin} min break` : ''} · grace ${x.graceMin} min · time in by ${aT12(x.deadline)}</small>
+        <small>${x.daysOff.length ? 'Day off: ' + x.daysOff.map(d => DAY3[d]).join(', ') : 'No fixed day off'}${x.location ? ' · 📍 ' + esc(x.location) : ''}</small>
+        <div class="sc-card-foot"><span class="hint">${x.people} on it today</span><span><button class="linkbtn" type="button" data-scedit="${esc(x.id)}">Edit</button>${x.isDefault ? '' : ` <button class="linkbtn" type="button" data-scdef="${esc(x.id)}">Make default</button> <button class="linkbtn bad" type="button" data-scdel="${esc(x.id)}">Delete</button>`}</span></div></div>`).join('');
+    // assign bar
+    const cur = $('#scAssignSched').value;
+    $('#scAssignSched').innerHTML = sc.schedules.map(x => `<option value="${esc(x.id)}">${esc(x.name)} (${scLine(x)})</option>`).join('');
+    if (sc.schedules.some(x => x.id === cur)) $('#scAssignSched').value = cur;
+    if (!$('#scAssignFrom').value) $('#scAssignFrom').value = sc.today;
+    $('#scAssignFrom').min = sc.lockedUntil ? addDaysStr(sc.lockedUntil, 1) : '';
+    scSel = new Set([...scSel].filter(id => sc.employees.some(e => e.user.id === id)));
+    $('#scSelCount').textContent = scSel.size; $('#scAssignGo').disabled = !scSel.size;
+    // week grid
+    $('#scGridHead').innerHTML = `<tr><th><input type="checkbox" id="scAll" aria-label="Select everyone" ${scSel.size && scSel.size === sc.employees.length ? 'checked' : ''}></th><th>Employee</th>${sc.days.map(d => `<th class="${d.date === sc.today ? 'is-today' : ''}">${d.day}<br><small>${+d.date.slice(8)}</small></th>`).join('')}</tr>`;
+    $('#scGrid').innerHTML = sc.employees.map(e => `<tr><td><input type="checkbox" data-scpick="${esc(e.user.id)}" ${scSel.has(e.user.id) ? 'checked' : ''} aria-label="Select ${esc(e.user.name)}"></td>
+      <td><b>${esc(e.user.name)}</b><br><small class="hint">${esc(e.current.name)}${e.current.isDefault ? ' (default)' : ''}${e.upcoming ? ` → <b>${esc(e.upcoming.name)}</b> from ${aDate(e.upcoming.from)}` : ''}</small></td>
+      ${e.week.map(c => `<td class="${c.date === sc.today ? 'is-today' : ''}">${c.off ? '<span class="sc-off">Day off</span>' : `<span class="sc-cell" style="--sc:${esc(c.color)}" title="${esc(c.name)}">${esc(c.name)}<small>${aT12(c.start)}–${aT12(c.end)}</small></span>`}</td>`).join('')}</tr>`).join('')
+      || `<tr><td colspan="9" class="hint">No employees record attendance yet. Add them in Users (role: Employee).</td></tr>`;
+  }
+  $('#scGrid').addEventListener('change', e => { const c = e.target.closest('[data-scpick]'); if (!c) return; c.checked ? scSel.add(c.dataset.scpick) : scSel.delete(c.dataset.scpick); $('#scSelCount').textContent = scSel.size; $('#scAssignGo').disabled = !scSel.size; $('#scAll').checked = scSel.size === sc.employees.length; });
+  $('#scGridHead').addEventListener('change', e => { if (e.target.id !== 'scAll') return; scSel = e.target.checked ? new Set(sc.employees.map(x => x.user.id)) : new Set(); renderSchedules(); });
+  $('#scPrev').onclick = () => loadSchedules(addDaysStr(scWeek, -7));
+  $('#scNext').onclick = () => loadSchedules(addDaysStr(scWeek, 7));
+  $('#scThis').onclick = () => loadSchedules(sc?.today || '');
+  $('#scAssignGo').onclick = async () => {
+    const x = sc.schedules.find(s2 => s2.id === $('#scAssignSched').value), n = scSel.size, from = $('#scAssignFrom').value;
+    if (!x || !n) return;
+    if (!confirm(`Assign "${x.name}" (${scLine(x)}) to ${n} employee${n === 1 ? '' : 's'} starting ${aDate(from)}?\nIt replaces their schedule from that day on, and they'll get a notification.`)) return;
+    $('#scAssignGo').disabled = true;
+    try { sc = await api('/api/staff/schedules', { method: 'POST', body: { assign: { scheduleId: x.id, userIds: [...scSel], from }, week: scWeek } }); scSel.clear(); renderSchedules(); toast(`✓ ${x.name} assigned to ${n} employee${n === 1 ? '' : 's'}. They've been notified.`); $('#scAssignNote').textContent = ''; }
+    catch (err) { $('#scAssignNote').textContent = err.message; $('#scAssignNote').classList.add('err'); }
+    $('#scAssignGo').disabled = !scSel.size;
+  };
+  // create / edit dialog
+  function openSchedule(x) {
+    scEdit = x || null; scPin = x && x.lat != null ? { lat: x.lat, lng: x.lng } : null;
+    $('#scTitle').textContent = x ? `Edit: ${x.name}` : 'New schedule';
+    $('#sfName').value = x?.name || ''; $('#sfColor').value = x?.color || '#066B23';
+    $('#sfStart').value = x?.start || '09:00'; $('#sfEnd').value = x?.end || '19:00'; $('#sfHours').value = x?.requiredHours ?? 10; $('#sfBreak').value = x?.breakMin ?? 0;
+    $('#sfGrace').value = x?.graceMin ?? 15; $('#sfDeadline').value = x?.deadline || '11:00'; $('#sfLoc').value = x?.location ?? 'Main shop';
+    $$('#sfDays [data-sdo]').forEach(b => b.setAttribute('aria-pressed', !!x?.daysOff.includes(+b.dataset.sdo)));
+    $('#sfNote').textContent = ''; sfSummary(); $('#scDlg').showModal(); setTimeout(() => $('#sfName').focus(), 50);
+  }
+  function sfSummary() {
+    const st = $('#sfStart').value, en = $('#sfEnd').value; if (!st || !en) return;
+    const span = ((+en.slice(0, 2) * 60 + +en.slice(3)) - (+st.slice(0, 2) * 60 + +st.slice(3)) + 1440) % 1440 || 1440;
+    const need = Math.round(+$('#sfHours').value * 60) + (+$('#sfBreak').value || 0);
+    $('#sfPin').textContent = scPin ? `Pin: ${scPin.lat.toFixed(5)}, ${scPin.lng.toFixed(5)}` : "Uses the shop's location (Attendance settings)";
+    $('#sfSummary').innerHTML = `${aT12(st)} → ${aT12(en)} = ${Math.floor(span / 60)}h ${span % 60}m. Late after ${aT12(addMin(st, +$('#sfGrace').value || 0))}; absent if not in by ${aT12($('#sfDeadline').value || st)}.${need > span ? ` <b class="warn-t">${$('#sfHours').value}h${+$('#sfBreak').value ? ' + break' : ''} doesn't fit, so change the time out.</b>` : ''}`;
+  }
+  const addMin = (t, m) => { const x = (+t.slice(0, 2) * 60 + +t.slice(3) + m) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
+  ['#sfStart', '#sfEnd', '#sfHours', '#sfBreak', '#sfGrace', '#sfDeadline'].forEach(id => $(id).addEventListener('input', sfSummary));
+  $('#sfDays').addEventListener('click', e => { const b = e.target.closest('[data-sdo]'); if (b) b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); });
+  $('#sfHere').onclick = () => navigator.geolocation?.getCurrentPosition(p => { scPin = { lat: p.coords.latitude, lng: p.coords.longitude }; sfSummary(); }, () => toast("Couldn't get this device's location."), { enableHighAccuracy: true, timeout: 15000 });
+  $('#sfPinClear').onclick = () => { scPin = null; sfSummary(); };
+  $('#scNew').onclick = () => openSchedule(null);
+  $('#scClose').onclick = () => $('#scDlg').close();
+  $('#scForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const schedule = { name: $('#sfName').value, start: $('#sfStart').value, end: $('#sfEnd').value, requiredHours: $('#sfHours').value, breakMin: $('#sfBreak').value, graceMin: $('#sfGrace').value,
+      deadline: $('#sfDeadline').value, daysOff: $$('#sfDays [data-sdo]').filter(b => b.getAttribute('aria-pressed') === 'true').map(b => +b.dataset.sdo),
+      location: $('#sfLoc').value, lat: scPin ? scPin.lat : null, lng: scPin ? scPin.lng : null, color: $('#sfColor').value };
+    $('#sfSave').disabled = true;
+    try {
+      sc = await api('/api/staff/schedules', { method: scEdit ? 'PUT' : 'POST', body: { ...(scEdit ? { id: scEdit.id } : {}), schedule, week: scWeek } });
+      $('#scDlg').close(); renderSchedules(); toast(scEdit ? `Saved. Everyone on ${schedule.name} has been notified.` : `${schedule.name} created. Now assign it below.`);
+    } catch (err) { $('#sfNote').textContent = err.message; $('#sfNote').classList.add('err'); }
+    $('#sfSave').disabled = false;
+  });
+  $('#scCards').addEventListener('click', async e => {
+    const ed = e.target.closest('[data-scedit]'), df = e.target.closest('[data-scdef]'), dl = e.target.closest('[data-scdel]');
+    if (ed) return openSchedule(sc.schedules.find(x => x.id === ed.dataset.scedit));
+    const x = sc.schedules.find(y => y.id === (df || dl)?.dataset[df ? 'scdef' : 'scdel']); if (!x) return;
+    if (df && !confirm(`Make "${x.name}" the default? Everyone without their own schedule will follow it (and be notified).`)) return;
+    if (dl && !confirm(`Delete "${x.name}"?`)) return;
+    try { sc = await api('/api/staff/schedules', { method: df ? 'PUT' : 'DELETE', body: { id: x.id, ...(df ? { makeDefault: true } : {}), week: scWeek } }); renderSchedules(); toast(df ? `${x.name} is now the default` : `${x.name} deleted`); }
+    catch (err) { fail(err); }
+  });
+
+  // ===================================================================== PAYROLL (permission: payroll, confidential)
+  let py = null, pyPeriod = '', pyOpen = new Set();
+  const peso = (c) => '₱' + ((c || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  async function loadPayroll(period) {
+    try {
+      if (!pyPeriod && !period) { const l = await api('/api/staff/payroll?list=1'); pyPeriod = l.current; renderPyHist(l); }
+      if (period) pyPeriod = period;
+      py = await api(`/api/staff/payroll?period=${pyPeriod}`); renderPayroll();
+    } catch (err) { fail(err); }
+  }
+  const pyShift = (id, n) => { const [y, m, h] = id.split('-').map(Number); let k = (y * 12 + (m - 1)) * 2 + (h - 1) + n; const hh = k % 2 + 1; k = Math.floor(k / 2); return `${Math.floor(k / 12)}-${String(k % 12 + 1).padStart(2, '0')}-${hh}`; };
+  function renderPayroll() {
+    const P = py.period, fin = py.status === 'final';
+    $('#pyLabel').textContent = P.label; $('#pyPay').textContent = ` · pay date ${aDate(P.payDate)} (${P.short})`;
+    $('#pyStatus').className = `att-chip ${fin ? 'ok' : 'warn'}`; $('#pyStatus').textContent = fin ? `🔒 Finalized ${py.finalizedAt ? new Date(py.finalizedAt).toLocaleDateString('en-PH') : ''}` : py.complete ? 'Draft: ready to finalize' : 'Draft: period not over yet';
+    $('#pyFinal').hidden = fin; $('#pyReopen').hidden = !fin; $('#pyFinal').disabled = !py.complete;
+    const q = `/api/staff/payroll?period=${P.id}`;
+    $('#pyXlsx').href = `${q}&format=xlsx`; $('#pyPdf').href = `${q}&format=pdf`; $('#pyPrint').href = `${q}&format=pdf&inline=1`;
+    const flagged = py.employees.filter(e => e.calc.flags.length);
+    $('#pyWarn').hidden = !flagged.length && py.complete;
+    $('#pyWarn').innerHTML = [!py.complete ? `⏳ This period ends ${aDate(P.to)}. Numbers will change as days are recorded.` : '', ...flagged.map(e => `⚠️ <b>${esc(e.user.name)}</b>: ${esc(e.calc.flags.join('; '))}`)].filter(Boolean).join('<br>');
+    const T = py.totals || {};
+    $('#pyKpis').innerHTML = [['Employees', py.employees.length, ''], ['Basic', peso(T.basicCents), ''], ['Overtime', peso(T.otCents), ''], ['Deductions', peso(T.totalDeductCents), ''], ['Net payroll', peso(T.netCents), 'ok']]
+      .map(([k, v, c]) => `<div class="att-kpi ${c}"><b>${v}</b><span>${k}</span></div>`).join('');
+    $('#pyRows').innerHTML = py.employees.map(({ user, calc: c, dtr }) => `<tr class="py-row ${pyOpen.has(user.id) ? 'open' : ''}" data-pyu="${esc(user.id)}">
+        <td><button class="linkbtn py-name" type="button" data-pytoggle>${pyOpen.has(user.id) ? '▾' : '▸'} <b>${esc(user.name)}</b></button>${c.edited.length || c.lines.length ? ' <small class="att-chip">edited</small>' : ''}${c.flags.length ? ' <small class="warn-t">⚠️</small>' : ''}</td>
+        <td class="num">${c.daysWorked}</td><td class="num">${peso(c.dailyCents)}</td><td class="num">${peso(c.basicCents)}</td>
+        <td class="num">${peso(c.otCents)}<br><small class="hint">${aHm(c.otMin)}</small></td><td class="num">${peso(c.addCents)}</td><td class="num">−${peso(c.totalDeductCents)}</td>
+        <td class="num"><b>${peso(c.netCents)}</b></td>
+        <td><a class="linkbtn" href="/api/staff/payroll?period=${P.id}&format=pdf&user=${esc(user.id)}&inline=1" target="_blank" rel="noopener">Payslip</a></td></tr>
+      ${pyOpen.has(user.id) ? `<tr class="py-detail"><td colspan="9">${pyDetail(user, c, dtr, fin)}</td></tr>` : ''}`).join('') || '<tr><td colspan="9" class="hint">Nobody to pay in this period. Set daily rates below, and make sure employees record attendance.</td></tr>';
+    $('#pyFoot').innerHTML = py.employees.length ? `<tr><td><b>Total</b></td><td class="num">${T.daysWorked || 0}</td><td></td><td class="num">${peso(T.basicCents)}</td><td class="num">${peso(T.otCents)}</td><td class="num">${peso(T.addCents)}</td><td class="num">−${peso(T.totalDeductCents)}</td><td class="num"><b>${peso(T.netCents)}</b></td><td></td></tr>` : '';
+  }
+  function pyDetail(user, c, dtr, fin) {
+    const dis = fin ? 'disabled' : '', v = (x) => (x == null ? '' : x);
+    const auto = c.auto, ed = new Set(c.edited);
+    const lines = c.lines.map((l, i) => `<div class="py-line" data-pyl="${i}"><select data-plk ${dis}><option value="add" ${l.kind === 'add' ? 'selected' : ''}>+ Addition</option><option value="deduct" ${l.kind === 'deduct' ? 'selected' : ''}>− Deduction</option></select><input data-pll maxlength="60" value="${esc(l.label)}" ${dis}><input data-pla type="number" min="0" step="0.01" value="${l.cents / 100}" ${dis}>${fin ? '' : '<button class="linkbtn bad" type="button" data-pyrm>Remove</button>'}</div>`).join('');
+    return `<div class="py-grid">
+      <div class="py-col"><h4 class="tiers-h">Attendance (from the DTR)</h4>
+        <p><b>${c.daysWorked}</b> days worked${ed.has('daysWorked') ? ` <small class="hint">(DTR: ${auto.daysWorked})</small>` : ''} · ${c.absentDays} absent · ${c.restDays} rest days</p>
+        <p>Late: ${c.lateDays} day(s), ${c.lateMin} min · Undertime: ${aHm(c.utMin)} · Overtime: ${aHm(auto.otMin)} · Hours: ${aHm(c.workedMin)}</p>
+        <p class="hint">Rate ${peso(c.dailyCents)}/day · OT at ${c.otPct}% · late ${c.deductLate ? 'deducted' : 'not deducted'} · undertime ${c.deductUndertime ? 'deducted' : 'not deducted'}</p></div>
+      <div class="py-col"><h4 class="tiers-h">Change amounts <small class="hint">(empty = automatic)</small></h4>
+        <div class="row2">
+          <div class="field"><label>Days worked</label><input data-pyf="daysWorked" type="number" min="0" max="31" step="0.5" value="${ed.has('daysWorked') ? v(c.daysWorked) : ''}" placeholder="${auto.daysWorked}" ${dis}></div>
+          <div class="field"><label>Overtime hours</label><input data-pyf="otHours" type="number" min="0" step="0.25" value="${ed.has('otMin') ? Math.round(c.otMin / 60 * 100) / 100 : ''}" placeholder="${Math.round(auto.otMin / 60 * 100) / 100}" ${dis}></div>
+          <div class="field"><label>Overtime pay (₱)</label><input data-pyf="otAmount" type="number" min="0" step="0.01" value="${ed.has('otCents') ? c.otCents / 100 : ''}" placeholder="${(auto.otCents / 100).toFixed(2)}" ${dis}></div>
+          <div class="field"><label>Late deduction (₱)</label><input data-pyf="lateDeduct" type="number" min="0" step="0.01" value="${ed.has('lateCents') ? c.lateCents / 100 : ''}" placeholder="${(auto.lateCents / 100).toFixed(2)}" ${dis}></div>
+          <div class="field"><label>Undertime deduction (₱)</label><input data-pyf="undertimeDeduct" type="number" min="0" step="0.01" value="${ed.has('utCents') ? c.utCents / 100 : ''}" placeholder="${(auto.utCents / 100).toFixed(2)}" ${dis}></div>
+        </div></div>
+      <div class="py-col py-wide"><h4 class="tiers-h">Adjustments <small class="hint">(SSS, PhilHealth, Pag-IBIG, cash advance, allowance, bonus, holiday pay…)</small></h4>
+        <div class="py-lines">${lines || '<p class="hint">None.</p>'}</div>
+        ${fin ? '' : '<button class="linkbtn" type="button" data-pyadd="add">+ Add an addition</button> · <button class="linkbtn" type="button" data-pyadd="deduct">− Add a deduction</button>'}
+        <div class="field"><label>Note (shows on the payslip)</label><input data-pyf="note" maxlength="200" value="${esc(c.note)}" ${dis}></div>
+        ${fin ? '<p class="hint">🔒 Finalized. Reopen the payroll to change it.</p>' : `<div class="row-btns"><button class="btn" type="button" data-pysave>Save ${esc(user.name.split(' ')[0])}'s pay</button><button class="linkbtn" type="button" data-pyreset>Back to automatic</button></div>`}
+        <p class="note" data-pynote role="status"></p></div>
+    </div>`;
+  }
+  $('#pyRows').addEventListener('click', async e => {
+    const tr = e.target.closest('[data-pyu]') || e.target.closest('.py-detail')?.previousElementSibling; if (!tr) return;
+    const uid = tr.dataset.pyu, det = tr.nextElementSibling?.classList.contains('py-detail') ? tr.nextElementSibling : null;
+    if (e.target.closest('[data-pytoggle]')) { pyOpen.has(uid) ? pyOpen.delete(uid) : pyOpen.add(uid); return renderPayroll(); }
+    if (!det) return;
+    const add = e.target.closest('[data-pyadd]');
+    if (add) { const box = det.querySelector('.py-lines'); if (box.querySelector('.hint')) box.innerHTML = '';
+      box.insertAdjacentHTML('beforeend', `<div class="py-line"><select data-plk><option value="add" ${add.dataset.pyadd === 'add' ? 'selected' : ''}>+ Addition</option><option value="deduct" ${add.dataset.pyadd === 'deduct' ? 'selected' : ''}>− Deduction</option></select><input data-pll maxlength="60" placeholder="${add.dataset.pyadd === 'add' ? 'e.g. Allowance' : 'e.g. SSS'}"><input data-pla type="number" min="0" step="0.01" placeholder="0.00"><button class="linkbtn bad" type="button" data-pyrm>Remove</button></div>`);
+      box.lastElementChild.querySelector('[data-pll]').focus(); return; }
+    if (e.target.closest('[data-pyrm]')) { e.target.closest('.py-line').remove(); return; }
+    const save = e.target.closest('[data-pysave]'), reset = e.target.closest('[data-pyreset]'); if (!save && !reset) return;
+    const f = (k) => det.querySelector(`[data-pyf="${k}"]`).value;
+    const lines = [...det.querySelectorAll('.py-line')].map(l => ({ kind: l.querySelector('[data-plk]').value, label: l.querySelector('[data-pll]').value, amount: l.querySelector('[data-pla]').value })).filter(l => l.label || l.amount);
+    try {
+      py = await api('/api/staff/payroll', { method: 'PUT', body: reset ? { period: py.period.id, userId: uid, clear: true }
+        : { period: py.period.id, userId: uid, item: { daysWorked: f('daysWorked'), otHours: f('otHours'), otAmount: f('otAmount'), lateDeduct: f('lateDeduct'), undertimeDeduct: f('undertimeDeduct'), lines, note: f('note') } } });
+      renderPayroll(); toast(reset ? 'Back to the automatic amounts' : 'Pay saved');
+    } catch (err) { const n = det.querySelector('[data-pynote]'); n.textContent = err.message; n.classList.add('err'); }
+  });
+  $('#pyPrev').onclick = () => loadPayroll(pyShift(pyPeriod, -1));
+  $('#pyNext').onclick = () => loadPayroll(pyShift(pyPeriod, 1));
+  $('#pyFinal').onclick = async () => {
+    if (!confirm(`Finalize the payroll for ${py.period.label}?\nThe numbers are frozen (later DTR, rate or schedule changes won't change them), and schedules for these days are locked.`)) return;
+    try { py = await api('/api/staff/payroll', { method: 'POST', body: { period: py.period.id, action: 'finalize' } }); renderPayroll(); toast('Payroll finalized'); loadPyHist(); } catch (err) { fail(err); }
+  };
+  $('#pyReopen').onclick = async () => {
+    if (!confirm('Reopen this payroll? It goes back to draft and is recalculated from the current DTR and rates.')) return;
+    try { py = await api('/api/staff/payroll', { method: 'POST', body: { period: py.period.id, action: 'reopen' } }); renderPayroll(); toast('Payroll reopened'); loadPyHist(); } catch (err) { fail(err); }
+  };
+  async function loadPyHist() { try { renderPyHist(await api('/api/staff/payroll?list=1')); } catch {} }
+  function renderPyHist(l) {
+    $('#pyHist').innerHTML = l.runs.length ? `<table class="otable"><thead><tr><th>Period</th><th>Pay date</th><th>Status</th><th></th></tr></thead><tbody>${l.runs.map(r => `<tr><td>${esc(r.label)}</td><td>${aDate(r.payDate)}</td><td>${r.status === 'final' ? '<span class="att-chip ok">Finalized</span>' : '<span class="att-chip warn">Draft</span>'}</td><td><button class="linkbtn" type="button" data-pygo="${esc(r.id)}">Open</button></td></tr>`).join('')}</tbody></table>` : '<p class="hint">No payrolls saved yet.</p>';
+  }
+  $('#pyHist').addEventListener('click', e => { const b = e.target.closest('[data-pygo]'); if (b) { loadPayroll(b.dataset.pygo); window.scrollTo({ top: 0, behavior: 'smooth' }); } });
+  // rates
+  let pyRates = null;
+  async function loadPyRates() { try { pyRates = await api('/api/staff/payroll?rates=1'); renderPyRates(); } catch (err) { fail(err); } }
+  function renderPyRates() {
+    $('#pyRates').innerHTML = pyRates.employees.map(({ user, pay }) => `<tr data-pru="${esc(user.id)}"><td><b>${esc(user.name)}</b> <small class="hint">${esc(user.role)}${user.active ? '' : ' · inactive'}</small></td>
+      <td class="num"><input class="cell num" data-prf="dailyRate" type="number" min="0" step="0.01" value="${pay.dailyCents ? pay.dailyCents / 100 : ''}" placeholder="0.00"></td>
+      <td class="num"><small class="hint">${pay.dailyCents ? peso(Math.round(pay.dailyCents / 10)) : '—'}</small></td>
+      <td class="num"><input class="cell num sm" data-prf="otPct" type="number" min="100" max="300" value="${pay.otPct}"></td>
+      <td><input type="checkbox" class="toggle" data-prf="deductLate" ${pay.deductLate ? 'checked' : ''} aria-label="Deduct late"></td>
+      <td><input type="checkbox" class="toggle" data-prf="deductUndertime" ${pay.deductUndertime ? 'checked' : ''} aria-label="Deduct undertime"></td>
+      <td><button class="btn sm" type="button" data-prsave>Save</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No employees yet.</td></tr>';
+  }
+  $('#pyRates').addEventListener('click', async e => {
+    const b = e.target.closest('[data-prsave]'); if (!b) return; const tr = b.closest('tr'), f = (k) => tr.querySelector(`[data-prf="${k}"]`);
+    try {
+      await api('/api/staff/payroll', { method: 'PUT', body: { rates: { userId: tr.dataset.pru, dailyRate: f('dailyRate').value || 0, otPct: f('otPct').value, deductLate: f('deductLate').checked, deductUndertime: f('deductUndertime').checked } } });
+      toast('Rate saved'); loadPyRates(); loadPayroll(pyPeriod);
+    } catch (err) { fail(err); }
+  });
+  $('#pyRatesBox').addEventListener('toggle', () => { if ($('#pyRatesBox').open && !pyRates) loadPyRates(); });
 
   // ===================================================================== catalog + settings
   async function loadCatalog() {
@@ -2015,7 +2208,7 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
-    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'attendance.settings': 'Attendance rules', 'attendance.schedule': 'Employee schedule', 'attendance.edit': 'Fixed attendance', 'attendance.delete': 'Deleted attendance', 'dtr.export': 'Downloaded DTR', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
+    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'attendance.settings': 'Attendance rules', 'attendance.schedule': 'Employee schedule', 'attendance.edit': 'Fixed attendance', 'attendance.delete': 'Deleted attendance', 'dtr.export': 'Downloaded DTR', 'schedule.add': 'Added a schedule', 'schedule.edit': 'Edited a schedule', 'schedule.delete': 'Deleted a schedule', 'schedule.default': 'Changed the default schedule', 'schedule.assign': 'Assigned a schedule', 'payroll.rate': 'Changed a salary rate', 'payroll.edit': 'Edited payroll', 'payroll.finalize': 'Finalized payroll', 'payroll.reopen': 'Reopened payroll', 'payroll.export': 'Downloaded payroll', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
     'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',

@@ -138,8 +138,46 @@
         <div class="pt-day-d"><b>${esc(fmtDate(x.date))}</b>${chip(x)}</div>
         <div class="pt-day-t"><span>${fmtTime(x.timeIn)} → ${fmtTime(x.timeOut)}</span><b>${x.workedMin != null ? hm(x.workedMin) : x.timeIn && !x.timeOut ? 'no time-out' : ''}</b></div>
         ${x.flags?.length ? `<small>${esc(x.flags.filter((f) => f !== 'No time-in').join(' · '))}</small>` : ''}</div>`).join('') || '<p class="hint">No days yet this month.</p>';
+    renderSchedule();
     clearInterval(tick); tick = setInterval(() => { renderClock(); if (data?.todayRow?.status === 'working') renderHours(); }, 1000); renderClock();
   }
+  // ---------------------------------------------------------------- my schedule + notifications
+  const DAYN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  let sView = 'week', ntShownFor = '';
+  function renderSchedule() {
+    const m = data.mySchedule; if (!m) { $('#sSched').hidden = true; return; }
+    $('#sSched').hidden = false;
+    const c = m.current;
+    $('#sCurrent').innerHTML = `<div class="pt-shift-name"><b>${esc(c.name || 'Shop schedule')}</b>${c.location ? `<span>📍 ${esc(c.location)}</span>` : ''}</div>
+      <div class="pt-times">
+        <div><span>Time in</span><b>${c.start ? t12(c.start) : '—'}</b><small>late after ${c.start ? t12(addM(c.start, c.graceMin)) : '—'}</small></div>
+        <div><span>Time out</span><b>${c.end ? t12(c.end) : '—'}</b><small>${c.requiredHours}h required${c.breakMin ? ` + ${c.breakMin} min break` : ''}</small></div>
+        <div><span>Day off</span><b>${c.daysOffNames.length ? esc(c.daysOffNames.map(d => d.slice(0, 3)).join(', ')) : 'None'}</b><small>time in by ${t12(c.deadline)}</small></div>
+      </div>`;
+    $('#sUpcoming').hidden = !m.upcoming;
+    if (m.upcoming) $('#sUpcoming').innerHTML = `🔔 From <b>${esc(fmtDate(m.upcoming.from))}</b>: <b>${esc(m.upcoming.name)}</b>, ${t12(m.upcoming.start)} – ${t12(m.upcoming.end)}${m.upcoming.daysOff.length ? ` · day off ${esc(m.upcoming.daysOff.join(', '))}` : ''}${m.upcoming.location ? ` · ${esc(m.upcoming.location)}` : ''}`;
+    $('#sWeek').hidden = sView !== 'week'; $('#sMonth').hidden = sView !== 'month';
+    $('#sWeek').innerHTML = m.week.map(d => `<div class="pt-wd ${d.off ? 'off' : ''} ${d.date === data.today ? 'today' : ''}" style="--sc:${esc(d.color || '#066B23')}"><b>${DAYN[d.dow]}<small>${fmtDate(d.date).replace(/^\w+,\s*/, '')}</small></b><span>${d.off ? 'Day off' : `${t12(d.start)} – ${t12(d.end || '')}`}</span><small>${d.off ? '' : esc(d.name || '')}</small></div>`).join('');
+    const first = m.month[0]?.dow || 0;
+    $('#sMonth').innerHTML = DAYN.map(d => `<i class="pt-cal-h">${d[0]}</i>`).join('') + Array.from({ length: first }, () => '<i></i>').join('')
+      + m.month.map(d => `<div class="pt-cd ${d.off ? 'off' : ''} ${d.date === data.today ? 'today' : ''}" style="--sc:${esc(d.color || '#066B23')}" title="${d.off ? 'Day off' : esc(`${d.name}: ${t12(d.start)} – ${t12(d.end || '')}`)}"><b>${+d.date.slice(8)}</b><small>${d.off ? 'Off' : t12(d.start).replace(':00', '')}</small></div>`).join('');
+    // notifications
+    $('#ptBellN').hidden = !m.unread; $('#ptBellN').textContent = m.unread;
+    const unread = m.notifications.filter(n => !n.read), key = unread.map(n => n.id).join(',');
+    if (unread.length && key !== ntShownFor && !$('#ntDlg').open) { ntShownFor = key; openNotes(unread); }
+  }
+  const addM = (t, mm) => { const x = (+t.slice(0, 2) * 60 + +t.slice(3) + (mm || 0)) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
+  function openNotes(list) {
+    $('#ntTitle').textContent = list.some(n => !n.read) ? '🗓️ Schedule update' : '🔔 Notifications';
+    $('#ntList').innerHTML = list.length ? list.map(n => `<div class="nt-item ${n.read ? '' : 'new'}"><b>${esc(n.title)}</b><p>${esc(n.body)}</p><small>${new Date(n.at).toLocaleString('en-PH', { timeZone: TZ, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</small></div>`).join('') : '<p class="hint">No notifications yet.</p>';
+    $('#ntDlg').showModal();
+  }
+  const markRead = async () => { $('#ntDlg').close(); if (!data?.mySchedule?.unread) return; try { await api('/api/staff/attendance', { method: 'POST', body: { action: 'read' } }); data.mySchedule.unread = 0; data.mySchedule.notifications.forEach(n => { n.read = true; }); $('#ptBellN').hidden = true; } catch {} };
+  $('#ntOk').onclick = markRead; $('#ntClose').onclick = markRead;
+  $('#ptBell').onclick = () => { if (data?.mySchedule) openNotes(data.mySchedule.notifications); };
+  document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { sView = b.dataset.sv; document.querySelectorAll('[data-sv]').forEach(x => x.setAttribute('aria-pressed', x === b)); renderSchedule(); });
+  setInterval(() => { if (me && !document.hidden && !$('#vHome').hidden && !busy) load(data?.month === data?.today?.slice(0, 7) ? undefined : data?.month); }, 60000); // new schedules show up without reloading
+
   function renderClock() { $('#hClock').textContent = serverNow().toLocaleTimeString('en-PH', { timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit' }); }
   function renderHours() {
     const r = data.todayRow, s = data.schedule;
