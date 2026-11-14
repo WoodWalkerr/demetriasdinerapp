@@ -138,7 +138,10 @@
         <div class="pt-day-d"><b>${esc(fmtDate(x.date))}</b>${chip(x)}</div>
         <div class="pt-day-t"><span>${fmtTime(x.timeIn)} → ${fmtTime(x.timeOut)}</span><b>${x.workedMin != null ? hm(x.workedMin) : x.timeIn && !x.timeOut ? 'no time-out' : ''}</b></div>
         ${x.flags?.length ? `<small>${esc(x.flags.filter((f) => f !== 'No time-in').join(' · '))}</small>` : ''}</div>`).join('') || '<p class="hint">No days yet this month.</p>';
+    $('#gdOpen').hidden = !(d.enabled && s?.track);
+    if (d.enabled && s?.track && !d.mustChangePassword && !seen(guideKey()) && !$('#ntDlg').open) openGuide();
     renderSchedule();
+    gpsWatch();
     clearInterval(tick); tick = setInterval(() => { renderClock(); if (data?.todayRow?.status === 'working') renderHours(); }, 1000); renderClock();
   }
   // ---------------------------------------------------------------- my schedule + notifications
@@ -164,8 +167,36 @@
     // notifications
     $('#ptBellN').hidden = !m.unread; $('#ptBellN').textContent = m.unread;
     const unread = m.notifications.filter(n => !n.read), key = unread.map(n => n.id).join(',');
-    if (unread.length && key !== ntShownFor && !$('#ntDlg').open) { ntShownFor = key; openNotes(unread); }
+    if (unread.length && key !== ntShownFor && !$('#ntDlg').open && !$('#gdDlg').open) { ntShownFor = key; openNotes(unread); }
   }
+  // ---------------------------------------------------------------- "How attendance works" (shown the first time, and again when the rules change)
+  const guideKey = () => { const d = data, s = d.schedule, r = d.rules; const raw = JSON.stringify([s.start, s.end, s.deadline, s.graceMin, s.requiredHours, s.breakMin, r.afterDeadline, r.requireLocation, r.blockOutside, r.radiusM, r.guideNotes]);
+    let h = 0; for (let i = 0; i < raw.length; i++) h = (h * 31 + raw.charCodeAt(i)) | 0; return `dd_guide_${d.me.username}_${h}`; };
+  const seen = (k) => { try { return localStorage.getItem(k) === '1'; } catch { return false; } };
+  function openGuide() {
+    const d = data, s = d.schedule, r = d.rules, cs = d.mySchedule?.current || {};
+    const days = cs.daysOffNames?.length ? cs.daysOffNames.join(', ') : '';
+    $('#gdSub').innerHTML = `Your schedule: <b>${esc(s.name || 'Shop schedule')}</b>, ${t12(s.start)} – ${s.end ? t12(s.end) : '…'}${s.location ? ` · 📍 ${esc(s.location)}` : ''}`;
+    const items = [
+      ['⏰', 'Time in when you arrive', `Open this page and tap <b>Time in</b> as soon as you get to work${s.start ? ` (your shift starts at <b>${t12(s.start)}</b>)` : ''}. The time comes from the server, not your phone.`],
+      ['✅', 'Be on time', `You're on time until <b>${t12(addM(s.start, s.graceMin))}</b>${s.graceMin ? ` (${s.graceMin}-minute grace)` : ''}. After that you're marked <b>Late</b> and the late minutes are recorded on your DTR.`],
+      ['❌', `Time in by ${t12(s.deadline)}`, r.afterDeadline === 'late' ? `A time-in after <b>${t12(s.deadline)}</b> still counts, but as <b>Late</b>. No time-in at all = <b>Absent</b>.` : `If you haven't timed in by <b>${t12(s.deadline)}</b>, the day counts as <b>Absent</b>, even if you come in later.`],
+      ['🕖', `Work ${s.requiredHours} hours`, `Your day is <b>${s.requiredHours} hours</b>${s.breakMin ? ` plus a ${s.breakMin}-minute unpaid break` : ''}. Leaving earlier is recorded as <b>undertime</b>. Staying longer is recorded as <b>overtime</b> for your admin to check.`],
+      ['🚪', 'Always time out', `Tap <b>Time out</b> before you leave. If you forget, that day's hours <b>aren't counted</b>. Tell your admin right away so they can correct it.`],
+      r.requireLocation ? ['📍', 'Be at the shop', `Time in and out only while you're at the shop${r.radiusM ? ` (within ${r.radiusM} m)` : ''}. Allow <b>Location</b> for this site and turn on GPS. ${r.blockOutside ? 'It <b>won\'t work</b> outside the shop.' : 'Outside the shop it still works, but it\'s <b>flagged</b> for your admin.'}`] : null,
+      ['🗓️', 'Check your schedule', `${days ? `Your day off: <b>${esc(days)}</b>. ` : ''}Schedule changes pop up here and show under <b>My schedule</b>. A day marked <b>Changed</b> is different just for that day.`],
+      ['🔒', 'Your account is yours', `Don't share your password, and never time in or out for someone else. Every time in/out is saved with the time and location.`],
+    ].filter(Boolean);
+    $('#gdList').innerHTML = items.map(([i, t, b]) => `<li><span class="gd-ico" aria-hidden="true">${i}</span><div><b>${t}</b><p>${b}</p></div></li>`).join('');
+    const notes = (r.guideNotes || '').split('\n').filter(Boolean);
+    $('#gdNotes').hidden = !notes.length;
+    $('#gdNotes').innerHTML = notes.length ? `<b>📌 Important from your admin</b><ul>${notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
+    if (!$('#gdDlg').open) $('#gdDlg').showModal();
+  }
+  const closeGuide = () => { if (data) { try { localStorage.setItem(guideKey(), '1'); } catch {} } $('#gdDlg').close(); if (data) renderSchedule(); };
+  $('#gdOk').onclick = closeGuide; $('#gdClose').onclick = closeGuide;
+  $('#gdDlg').addEventListener('cancel', (e) => { e.preventDefault(); closeGuide(); });
+  $('#gdOpen').onclick = () => { if (data) openGuide(); };
   const addM = (t, mm) => { const x = (+t.slice(0, 2) * 60 + +t.slice(3) + (mm || 0)) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
   function openNotes(list) {
     $('#ntTitle').textContent = list.some(n => !n.read) ? '🗓️ Schedule update' : '🔔 Notifications';
@@ -193,12 +224,24 @@
   $('#mPick').addEventListener('change', () => { if ($('#mPick').value) load($('#mPick').value); });
 
   // ---------------------------------------------------------------- time in / out
+  // While this page is open (and location is already allowed), keep a fresh GPS fix ready, so tapping
+  // Time in / out doesn't have to wait several seconds for the GPS to start.
+  let fix = null, watchId = null;
+  async function gpsWatch() {
+    const want = navigator.geolocation && data && data.enabled && data.schedule?.track && !data.todayRow?.timeOut && !document.hidden && !$('#vHome').hidden;
+    if (!want) { if (watchId != null) { navigator.geolocation.clearWatch(watchId); watchId = null; } return; }
+    if (watchId != null) return;
+    try { const p = await navigator.permissions?.query({ name: 'geolocation' }); if (p && p.state !== 'granted') return; if (!p) return; } catch { return; }
+    if (watchId != null) return;
+    watchId = navigator.geolocation.watchPosition((p) => { fix = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: Date.now() }; }, () => {}, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+  }
   const getLocation = () => new Promise((ok, no) => {
     if (!navigator.geolocation) return no(new Error("This browser can't share your location. Use Chrome or Safari."));
-    navigator.geolocation.getCurrentPosition((p) => ok({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
+    if (fix && Date.now() - fix.at < 60000 && fix.accuracy <= 150) return ok({ lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy }); // ready already
+    navigator.geolocation.getCurrentPosition((p) => { fix = { lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy, at: Date.now() }; ok({ lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy }); },
       (e) => no(new Error(e.code === 1 ? 'Location is blocked. Allow location for this site (browser settings → Location → Allow), then try again.'
         : e.code === 3 ? "Couldn't get your location in time. Go near a window or turn on Wi-Fi/GPS, then try again." : "Couldn't get your location. Turn on Location/GPS and try again.")),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 20000 });
   });
   let busy = false;
   $('#punchBtn').onclick = async () => {
@@ -217,8 +260,8 @@
       const r = await api('/api/staff/attendance', { method: 'POST', body: { action, ...loc } });
       note.textContent = `${action === 'in' ? '✅ Timed in' : '✅ Timed out'} at ${fmtTime(action === 'in' ? r.row.timeIn : r.row.timeOut)}${r.distM != null ? ` · ${dist(r.distM)}` : ''}${r.outside ? '. ⚠️ Outside the shop area, so this was flagged for your admin.' : ''}`;
       navigator.vibrate?.(60);
-      data.todayRow = r.row; render(); // show the new time right away; the full refresh follows
-      await load(data.month === data.today.slice(0, 7) ? undefined : data.month);
+      data.todayRow = r.row; render(); // show the new time right away; the full refresh follows in the background
+      load(data.month === data.today.slice(0, 7) ? undefined : data.month);
     } catch (err) {
       note.textContent = err.message; note.classList.add('err');
       if (err.status === 409) load();
@@ -226,6 +269,6 @@
     busy = false; b.disabled = false;
   };
   // back to the app after a while → refresh (times and statuses change)
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && me && !$('#vHome').hidden) load(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && me && !$('#vHome').hidden) load(); else gpsWatch(); });
   boot();
 })();
