@@ -391,11 +391,11 @@
 
 
   // ===================================================================== SCHEDULES (permission: attendance)
-  let sc = null, scWeek = '', scSel = new Set(), scEdit = null, scPin;
+  let sc = null, scWeek = '', scMode = 'week', scSel = new Set(), scEdit = null, scPin;
   const DAY3 = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const scLine = (x) => `${aT12(x.start)} – ${aT12(x.end)}`;
   async function loadSchedules(week) {
-    try { sc = await api('/api/staff/schedules' + (week || scWeek ? `?week=${week || scWeek}` : '')); scWeek = sc.weekStart; renderSchedules(); }
+    try { const w = week || scWeek; sc = await api(`/api/staff/schedules?mode=${scMode}${w ? `&week=${w}` : ''}`); scWeek = sc.weekStart; renderSchedules(); }
     catch (err) { fail(err); }
   }
   function renderSchedules() {
@@ -413,18 +413,56 @@
     $('#scAssignFrom').min = sc.lockedUntil ? addDaysStr(sc.lockedUntil, 1) : '';
     scSel = new Set([...scSel].filter(id => sc.employees.some(e => e.user.id === id)));
     $('#scSelCount').textContent = scSel.size; $('#scAssignGo').disabled = !scSel.size;
-    // week grid
+    // day / week grid: tap a day (today or later) to change just that day
+    $$('[data-scmode]').forEach(b => b.setAttribute('aria-pressed', b.dataset.scmode === scMode));
+    const last = sc.days[sc.days.length - 1].date;
+    $('#scRange').textContent = scMode === 'day' ? new Date(sc.days[0].date + 'T00:00:00Z').toLocaleDateString('en-PH', { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' }) : `${aDate(sc.days[0].date)} – ${aDate(last)}`;
+    $('.sc-grid').classList.toggle('day-mode', scMode === 'day');
     $('#scGridHead').innerHTML = `<tr><th><input type="checkbox" id="scAll" aria-label="Select everyone" ${scSel.size && scSel.size === sc.employees.length ? 'checked' : ''}></th><th>Employee</th>${sc.days.map(d => `<th class="${d.date === sc.today ? 'is-today' : ''}">${d.day}<br><small>${+d.date.slice(8)}</small></th>`).join('')}</tr>`;
     $('#scGrid').innerHTML = sc.employees.map(e => `<tr><td><input type="checkbox" data-scpick="${esc(e.user.id)}" ${scSel.has(e.user.id) ? 'checked' : ''} aria-label="Select ${esc(e.user.name)}"></td>
       <td><b>${esc(e.user.name)}</b><br><small class="hint">${esc(e.current.name)}${e.current.isDefault ? ' (default)' : ''}${e.upcoming ? ` → <b>${esc(e.upcoming.name)}</b> from ${aDate(e.upcoming.from)}` : ''}</small></td>
-      ${e.week.map(c => `<td class="${c.date === sc.today ? 'is-today' : ''}">${c.off ? '<span class="sc-off">Day off</span>' : `<span class="sc-cell" style="--sc:${esc(c.color)}" title="${esc(c.name)}">${esc(c.name)}<small>${aT12(c.start)}–${aT12(c.end)}</small></span>`}</td>`).join('')}</tr>`).join('')
+      ${e.week.map(c => `<td class="${c.date === sc.today ? 'is-today' : ''}">${scCell(e, c)}</td>`).join('')}</tr>`).join('')
       || `<tr><td colspan="9" class="hint">No employees record attendance yet. Add them in Users (role: Employee).</td></tr>`;
   }
   $('#scGrid').addEventListener('change', e => { const c = e.target.closest('[data-scpick]'); if (!c) return; c.checked ? scSel.add(c.dataset.scpick) : scSel.delete(c.dataset.scpick); $('#scSelCount').textContent = scSel.size; $('#scAssignGo').disabled = !scSel.size; $('#scAll').checked = scSel.size === sc.employees.length; });
   $('#scGridHead').addEventListener('change', e => { if (e.target.id !== 'scAll') return; scSel = e.target.checked ? new Set(sc.employees.map(x => x.user.id)) : new Set(); renderSchedules(); });
-  $('#scPrev').onclick = () => loadSchedules(addDaysStr(scWeek, -7));
-  $('#scNext').onclick = () => loadSchedules(addDaysStr(scWeek, 7));
+  const scCell = (e, c) => {
+    const inner = c.off ? `<span class="sc-off">Day off${c.override ? ' <i title="Changed for this day only">•</i>' : ''}</span>`
+      : `<span class="sc-cell" style="--sc:${esc(c.color)}">${esc(c.name)}${c.override ? ' <i title="Changed for this day only">•</i>' : ''}<small>${aT12(c.start)}–${aT12(c.end)}${scMode === 'day' ? ` · ${c.hours}h${c.location ? ' · ' + esc(c.location) : ''}` : ''}</small></span>`;
+    return c.editable ? `<button type="button" class="sc-pick" data-scday="${esc(e.user.id)}|${c.date}" aria-label="Change ${esc(e.user.name)}'s schedule on ${aDate(c.date)}">${inner}</button>` : `<span class="sc-past" title="Past days can't be changed">${inner}</span>`;
+  };
+  $('#scPrev').onclick = () => loadSchedules(addDaysStr(scWeek, scMode === 'day' ? -1 : -7));
+  $('#scNext').onclick = () => loadSchedules(addDaysStr(scWeek, scMode === 'day' ? 1 : 7));
   $('#scThis').onclick = () => loadSchedules(sc?.today || '');
+  $$('[data-scmode]').forEach(b => b.onclick = () => { scMode = b.dataset.scmode; loadSchedules(scMode === 'day' ? (scWeek < sc.today && addDaysStr(scWeek, 6) >= sc.today ? sc.today : scWeek) : scWeek); });
+  // ---- change one day
+  let sdCtx = null;
+  $('#scGrid').addEventListener('click', e => {
+    const b = e.target.closest('[data-scday]'); if (!b) return;
+    const [uid, date] = b.dataset.scday.split('|'), emp = sc.employees.find(x => x.user.id === uid), c = emp.week.find(x => x.date === date);
+    sdCtx = { uid, date, c };
+    $('#sdWho').textContent = emp.user.name;
+    $('#sdTitle').textContent = new Date(date + 'T00:00:00Z').toLocaleDateString('en-PH', { timeZone: 'UTC', weekday: 'long', month: 'short', day: 'numeric' });
+    $('#sdNow').innerHTML = c.override ? `Changed for this day only. Usually <b>${esc(c.usualName)}</b>.` : `Usual schedule: <b>${esc(c.name)}</b>${c.off ? ' (day off)' : ''}. Pick one to change <b>only this day</b>.`;
+    const cur = c.override === 'off' || (!c.override && c.off) ? 'off' : c.id;
+    $('#sdOpts').innerHTML = sc.schedules.map(x => `<button type="button" class="sd-opt ${cur === x.id ? 'on' : ''}" data-sdpick="${esc(x.id)}" role="option" aria-selected="${cur === x.id}" style="--sc:${esc(x.color)}">
+        <i></i><span><b>${esc(x.name)}</b><small>${aT12(x.start)} – ${aT12(x.end)} · ${x.requiredHours}h${x.location ? ' · ' + esc(x.location) : ''}</small></span>${cur === x.id ? '<em>✓</em>' : ''}</button>`).join('')
+      + `<button type="button" class="sd-opt off ${cur === 'off' ? 'on' : ''}" data-sdpick="off" role="option" aria-selected="${cur === 'off'}"><i></i><span><b>Day off</b><small>No work this day</small></span>${cur === 'off' ? '<em>✓</em>' : ''}</button>`
+      + (c.override ? `<button type="button" class="linkbtn sd-reset" data-sdpick="">↺ Back to the usual (${esc(c.usualName)})</button>` : '');
+    $('#sdNote').textContent = ''; $('#scDayDlg').showModal();
+  });
+  $('#sdOpts').addEventListener('click', async e => {
+    const b = e.target.closest('[data-sdpick]'); if (!b || !sdCtx) return;
+    const pick = b.dataset.sdpick;
+    $$('#sdOpts button').forEach(x => { x.disabled = true; });
+    try {
+      sc = await api('/api/staff/schedules', { method: 'POST', body: { day: { userId: sdCtx.uid, date: sdCtx.date, scheduleId: pick || null }, week: scWeek, mode: scMode } });
+      $('#scDayDlg').close(); renderSchedules();
+      toast(pick === 'off' ? 'Day off set for that day. They\'ve been notified.' : pick ? 'Shift changed for that day. They\'ve been notified.' : 'Back to the usual schedule');
+    } catch (err) { $('#sdNote').textContent = err.message; $('#sdNote').classList.add('err'); $$('#sdOpts button').forEach(x => { x.disabled = false; }); }
+  });
+  $('#sdClose').onclick = () => $('#scDayDlg').close();
+  $('#scDayDlg').addEventListener('click', e => { if (e.target === $('#scDayDlg')) $('#scDayDlg').close(); });
   $('#scAssignGo').onclick = async () => {
     const x = sc.schedules.find(s2 => s2.id === $('#scAssignSched').value), n = scSel.size, from = $('#scAssignFrom').value;
     if (!x || !n) return;
@@ -448,8 +486,8 @@
     const st = $('#sfStart').value, en = $('#sfEnd').value; if (!st || !en) return;
     const span = ((+en.slice(0, 2) * 60 + +en.slice(3)) - (+st.slice(0, 2) * 60 + +st.slice(3)) + 1440) % 1440 || 1440;
     const need = Math.round(+$('#sfHours').value * 60) + (+$('#sfBreak').value || 0);
-    $('#sfPin').textContent = scPin ? `Pin: ${scPin.lat.toFixed(5)}, ${scPin.lng.toFixed(5)}` : "Uses the shop's location (Attendance settings)";
-    $('#sfSummary').innerHTML = `${aT12(st)} → ${aT12(en)} = ${Math.floor(span / 60)}h ${span % 60}m. Late after ${aT12(addMin(st, +$('#sfGrace').value || 0))}; absent if not in by ${aT12($('#sfDeadline').value || st)}.${need > span ? ` <b class="warn-t">${$('#sfHours').value}h${+$('#sfBreak').value ? ' + break' : ''} doesn't fit, so change the time out.</b>` : ''}`;
+    $('#sfPin').textContent = scPin ? `📍 Own pin: ${scPin.lat.toFixed(5)}, ${scPin.lng.toFixed(5)}` : "Location check uses the shop's pin";
+    $('#sfSummary').innerHTML = `<span>⏱ ${aT12(st)} → ${aT12(en)} (${Math.floor(span / 60)}h${span % 60 ? ` ${span % 60}m` : ''})</span><span>Late after ${aT12(addMin(st, +$('#sfGrace').value || 0))}</span><span>Absent if not in by ${aT12($('#sfDeadline').value || st)}</span>${need > span ? `<b class="warn-t">${$('#sfHours').value}h${+$('#sfBreak').value ? ' + break' : ''} doesn't fit, so change the time out.</b>` : ''}`;
   }
   const addMin = (t, m) => { const x = (+t.slice(0, 2) * 60 + +t.slice(3) + m) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
   ['#sfStart', '#sfEnd', '#sfHours', '#sfBreak', '#sfGrace', '#sfDeadline'].forEach(id => $(id).addEventListener('input', sfSummary));
@@ -457,7 +495,7 @@
   $('#sfHere').onclick = () => navigator.geolocation?.getCurrentPosition(p => { scPin = { lat: p.coords.latitude, lng: p.coords.longitude }; sfSummary(); }, () => toast("Couldn't get this device's location."), { enableHighAccuracy: true, timeout: 15000 });
   $('#sfPinClear').onclick = () => { scPin = null; sfSummary(); };
   $('#scNew').onclick = () => openSchedule(null);
-  $('#scClose').onclick = () => $('#scDlg').close();
+  $('#scClose').onclick = $('#scCancel').onclick = () => $('#scDlg').close();
   $('#scForm').addEventListener('submit', async e => {
     e.preventDefault();
     const schedule = { name: $('#sfName').value, start: $('#sfStart').value, end: $('#sfEnd').value, requiredHours: $('#sfHours').value, breakMin: $('#sfBreak').value, graceMin: $('#sfGrace').value,
@@ -502,40 +540,51 @@
     $('#pyWarn').hidden = !flagged.length && py.complete;
     $('#pyWarn').innerHTML = [!py.complete ? `⏳ This period ends ${aDate(P.to)}. Numbers will change as days are recorded.` : '', ...flagged.map(e => `⚠️ <b>${esc(e.user.name)}</b>: ${esc(e.calc.flags.join('; '))}`)].filter(Boolean).join('<br>');
     const T = py.totals || {};
-    $('#pyKpis').innerHTML = [['Employees', py.employees.length, ''], ['Basic', peso(T.basicCents), ''], ['Overtime', peso(T.otCents), ''], ['Deductions', peso(T.totalDeductCents), ''], ['Net payroll', peso(T.netCents), 'ok']]
+    $('#pyKpis').innerHTML = [['Employees', py.employees.length, ''], ['Basic', peso(T.basicCents), ''], ['Overtime', peso(T.otCents), ''], ['Deductions', peso((T.totalDeductCents || 0) - (T.damageCents || 0)), ''], ['Damages', peso(T.damageCents || 0), ''], ['Net payroll', peso(T.netCents), 'ok']]
       .map(([k, v, c]) => `<div class="att-kpi ${c}"><b>${v}</b><span>${k}</span></div>`).join('');
     $('#pyRows').innerHTML = py.employees.map(({ user, calc: c, dtr }) => `<tr class="py-row ${pyOpen.has(user.id) ? 'open' : ''}" data-pyu="${esc(user.id)}">
         <td><button class="linkbtn py-name" type="button" data-pytoggle>${pyOpen.has(user.id) ? '▾' : '▸'} <b>${esc(user.name)}</b></button>${c.edited.length || c.lines.length ? ' <small class="att-chip">edited</small>' : ''}${c.flags.length ? ' <small class="warn-t">⚠️</small>' : ''}</td>
         <td class="num">${c.daysWorked}</td><td class="num">${peso(c.dailyCents)}</td><td class="num">${peso(c.basicCents)}</td>
-        <td class="num">${peso(c.otCents)}<br><small class="hint">${aHm(c.otMin)}</small></td><td class="num">${peso(c.addCents)}</td><td class="num">−${peso(c.totalDeductCents)}</td>
+        <td class="num">${peso(c.otCents)}<br><small class="hint">${pyHrs(c.otMin)}h × ${peso(c.otRateCents)}</small></td><td class="num">${peso(c.addCents)}</td><td class="num">−${peso(c.totalDeductCents - (c.damageCents || 0))}</td><td class="num">${c.damageCents ? '−' + peso(c.damageCents) : '—'}</td>
         <td class="num"><b>${peso(c.netCents)}</b></td>
         <td><a class="linkbtn" href="/api/staff/payroll?period=${P.id}&format=pdf&user=${esc(user.id)}&inline=1" target="_blank" rel="noopener">Payslip</a></td></tr>
-      ${pyOpen.has(user.id) ? `<tr class="py-detail"><td colspan="9">${pyDetail(user, c, dtr, fin)}</td></tr>` : ''}`).join('') || '<tr><td colspan="9" class="hint">Nobody to pay in this period. Set daily rates below, and make sure employees record attendance.</td></tr>';
-    $('#pyFoot').innerHTML = py.employees.length ? `<tr><td><b>Total</b></td><td class="num">${T.daysWorked || 0}</td><td></td><td class="num">${peso(T.basicCents)}</td><td class="num">${peso(T.otCents)}</td><td class="num">${peso(T.addCents)}</td><td class="num">−${peso(T.totalDeductCents)}</td><td class="num"><b>${peso(T.netCents)}</b></td><td></td></tr>` : '';
+      ${pyOpen.has(user.id) ? `<tr class="py-detail"><td colspan="10">${pyDetail(user, c, dtr, fin)}</td></tr>` : ''}`).join('') || '<tr><td colspan="10" class="hint">Nobody to pay in this period. Set daily rates below, and make sure employees record attendance.</td></tr>';
+    $('#pyFoot').innerHTML = py.employees.length ? `<tr><td><b>Total</b></td><td class="num">${T.daysWorked || 0}</td><td></td><td class="num">${peso(T.basicCents)}</td><td class="num">${peso(T.otCents)}<br><small class="hint">${pyHrs(T.otMin || 0)}h</small></td><td class="num">${peso(T.addCents)}</td><td class="num">−${peso((T.totalDeductCents || 0) - (T.damageCents || 0))}</td><td class="num">${T.damageCents ? '−' + peso(T.damageCents) : '—'}</td><td class="num"><b>${peso(T.netCents)}</b></td><td></td></tr>` : '';
   }
+  const pyOwn = (note, autoNote) => (note && note !== autoNote && note !== 'Set by admin' ? note : '');
+  const pyHrs = (m) => Math.round((m || 0) / 60 * 100) / 100;
+  const PY_KINDS = { add: ['+ Addition', 'e.g. Allowance, Holiday pay'], deduct: ['− Deduction', 'e.g. SSS, Cash advance'], damage: ['Damage', 'e.g. Broke 2 glass mugs'] };
+  const pyLine = (kind, l = {}, dis = '') => `<div class="py-line" data-kind="${kind}"><input data-pll maxlength="80" value="${esc(l.label || '')}" placeholder="${PY_KINDS[kind][1]}" aria-label="Description / reason" ${dis}><span class="py-amt">₱<input data-pla type="number" min="0" step="0.01" value="${l.cents ? l.cents / 100 : ''}" placeholder="0.00" aria-label="Amount" ${dis}></span>${dis ? '' : '<button class="x sm" type="button" data-pyrm aria-label="Remove">×</button>'}</div>`;
   function pyDetail(user, c, dtr, fin) {
-    const dis = fin ? 'disabled' : '', v = (x) => (x == null ? '' : x);
+    const dis = fin ? 'disabled' : '';
     const auto = c.auto, ed = new Set(c.edited);
-    const lines = c.lines.map((l, i) => `<div class="py-line" data-pyl="${i}"><select data-plk ${dis}><option value="add" ${l.kind === 'add' ? 'selected' : ''}>+ Addition</option><option value="deduct" ${l.kind === 'deduct' ? 'selected' : ''}>− Deduction</option></select><input data-pll maxlength="60" value="${esc(l.label)}" ${dis}><input data-pla type="number" min="0" step="0.01" value="${l.cents / 100}" ${dis}>${fin ? '' : '<button class="linkbtn bad" type="button" data-pyrm>Remove</button>'}</div>`).join('');
-    return `<div class="py-grid">
-      <div class="py-col"><h4 class="tiers-h">Attendance (from the DTR)</h4>
-        <p><b>${c.daysWorked}</b> days worked${ed.has('daysWorked') ? ` <small class="hint">(DTR: ${auto.daysWorked})</small>` : ''} · ${c.absentDays} absent · ${c.restDays} rest days</p>
-        <p>Late: ${c.lateDays} day(s), ${c.lateMin} min · Undertime: ${aHm(c.utMin)} · Overtime: ${aHm(auto.otMin)} · Hours: ${aHm(c.workedMin)}</p>
-        <p class="hint">Rate ${peso(c.dailyCents)}/day · OT at ${c.otPct}% · late ${c.deductLate ? 'deducted' : 'not deducted'} · undertime ${c.deductUndertime ? 'deducted' : 'not deducted'}</p></div>
-      <div class="py-col"><h4 class="tiers-h">Change amounts <small class="hint">(empty = automatic)</small></h4>
-        <div class="row2">
-          <div class="field"><label>Days worked</label><input data-pyf="daysWorked" type="number" min="0" max="31" step="0.5" value="${ed.has('daysWorked') ? v(c.daysWorked) : ''}" placeholder="${auto.daysWorked}" ${dis}></div>
-          <div class="field"><label>Overtime hours</label><input data-pyf="otHours" type="number" min="0" step="0.25" value="${ed.has('otMin') ? Math.round(c.otMin / 60 * 100) / 100 : ''}" placeholder="${Math.round(auto.otMin / 60 * 100) / 100}" ${dis}></div>
-          <div class="field"><label>Overtime pay (₱)</label><input data-pyf="otAmount" type="number" min="0" step="0.01" value="${ed.has('otCents') ? c.otCents / 100 : ''}" placeholder="${(auto.otCents / 100).toFixed(2)}" ${dis}></div>
-          <div class="field"><label>Late deduction (₱)</label><input data-pyf="lateDeduct" type="number" min="0" step="0.01" value="${ed.has('lateCents') ? c.lateCents / 100 : ''}" placeholder="${(auto.lateCents / 100).toFixed(2)}" ${dis}></div>
-          <div class="field"><label>Undertime deduction (₱)</label><input data-pyf="undertimeDeduct" type="number" min="0" step="0.01" value="${ed.has('utCents') ? c.utCents / 100 : ''}" placeholder="${(auto.utCents / 100).toFixed(2)}" ${dis}></div>
-        </div></div>
-      <div class="py-col py-wide"><h4 class="tiers-h">Adjustments <small class="hint">(SSS, PhilHealth, Pag-IBIG, cash advance, allowance, bonus, holiday pay…)</small></h4>
-        <div class="py-lines">${lines || '<p class="hint">None.</p>'}</div>
-        ${fin ? '' : '<button class="linkbtn" type="button" data-pyadd="add">+ Add an addition</button> · <button class="linkbtn" type="button" data-pyadd="deduct">− Add a deduction</button>'}
-        <div class="field"><label>Note (shows on the payslip)</label><input data-pyf="note" maxlength="200" value="${esc(c.note)}" ${dis}></div>
-        ${fin ? '<p class="hint">🔒 Finalized. Reopen the payroll to change it.</p>' : `<div class="row-btns"><button class="btn" type="button" data-pysave>Save ${esc(user.name.split(' ')[0])}'s pay</button><button class="linkbtn" type="button" data-pyreset>Back to automatic</button></div>`}
-        <p class="note" data-pynote role="status"></p></div>
+    const list = (kind) => c.lines.filter(l => l.kind === kind).map(l => pyLine(kind, l, dis)).join('');
+    const sum = (kind) => c.lines.filter(l => l.kind === kind).reduce((a, l) => a + l.cents, 0);
+    const box = (kind, title, hint) => `<div class="py-box" data-pybox="${kind}"><div class="py-box-h"><h4>${title}</h4><b data-pysum>${kind === 'add' ? '' : '−'}${peso(sum(kind))}</b></div>
+        <p class="hint">${hint}</p><div class="py-lines">${list(kind)}</div>
+        ${fin ? '' : `<button class="linkbtn" type="button" data-pyadd="${kind}">+ Add ${kind === 'damage' ? 'a damage' : kind === 'add' ? 'an addition' : 'a deduction'}</button>`}</div>`;
+    return `<div class="py-panel">
+      <p class="hint py-sumline">📋 <b>${c.daysWorked}</b> day(s) worked${ed.has('daysWorked') ? ` (DTR: ${auto.daysWorked})` : ''} · ${c.absentDays} absent · ${c.restDays} rest · late ${c.lateDays} day(s) / ${c.lateMin} min · undertime ${aHm(c.utMin)} · hours ${aHm(c.workedMin)} · rate ${peso(c.dailyCents)}/day</p>
+      <div class="py-boxes">
+        <div class="py-box"><div class="py-box-h"><h4>Basic pay</h4><b>${peso(c.basicCents)}</b></div>
+          <div class="py-calc"><label>Days<input data-pyf="daysWorked" type="number" min="0" max="31" step="0.5" value="${ed.has('daysWorked') ? c.daysWorked : ''}" placeholder="${auto.daysWorked}" ${dis}></label><span>× ${peso(c.dailyCents)}</span></div></div>
+        <div class="py-box"><div class="py-box-h"><h4>Overtime</h4><b>${peso(c.otCents)}</b></div>
+          <div class="py-calc"><label>Hours<input data-pyf="otHours" type="number" min="0" step="0.25" value="${ed.has('otMin') ? pyHrs(c.otMin) : ''}" placeholder="${pyHrs(auto.otMin)}" ${dis}></label><span>×</span>
+            <label>₱ per hour<input data-pyf="otRate" type="number" min="0" step="0.01" value="${ed.has('otRateCents') ? c.otRateCents / 100 : ''}" placeholder="${(auto.otRateCents / 100).toFixed(2)}" ${dis}></label><span>=</span>
+            <label>Total ₱<input data-pyf="otAmount" type="number" min="0" step="0.01" value="${ed.has('otCents') ? c.otCents / 100 : ''}" placeholder="${(pyHrs(c.otMin) * c.otRateCents / 100).toFixed(2)}" ${dis}></label></div>
+          <p class="hint">${pyHrs(c.otMin)} h × ${peso(c.otRateCents)}/hour = <b>${peso(c.otCents)}</b>. DTR overtime: ${aHm(auto.otMin)}. A fixed peso amount per hour, not a % of the daily rate.</p></div>
+        <div class="py-box"><div class="py-box-h"><h4>Late &amp; undertime</h4><b>−${peso(c.lateCents + c.utCents)}</b></div>
+          <div class="py-line"><input data-pyf="lateNote" maxlength="80" value="${esc(pyOwn(c.lateNote, `${c.lateMin} min late`))}" placeholder="Late reason (${esc(c.lateNote || 'none')})" aria-label="Late reason" ${dis}><span class="py-amt">₱<input data-pyf="lateDeduct" type="number" min="0" step="0.01" value="${ed.has('lateCents') ? c.lateCents / 100 : ''}" placeholder="${(auto.lateCents / 100).toFixed(2)}" aria-label="Late deduction" ${dis}></span></div>
+          <div class="py-line"><input data-pyf="utNote" maxlength="80" value="${esc(pyOwn(c.utNote, `${c.utMin} min short`))}" placeholder="Undertime reason (${esc(c.utNote || 'none')})" aria-label="Undertime reason" ${dis}><span class="py-amt">₱<input data-pyf="undertimeDeduct" type="number" min="0" step="0.01" value="${ed.has('utCents') ? c.utCents / 100 : ''}" placeholder="${(auto.utCents / 100).toFixed(2)}" aria-label="Undertime deduction" ${dis}></span></div>
+          <p class="hint">Empty = automatic from the DTR (late ${c.deductLate ? 'deducted' : 'not deducted'}, undertime ${c.deductUndertime ? 'deducted' : 'not deducted'}).</p></div>
+        ${box('add', 'Additions', 'Allowance, bonus, holiday pay… each with a description.')}
+        ${box('deduct', 'Deductions', 'SSS, PhilHealth, Pag-IBIG, cash advance… each with a description.')}
+        ${box('damage', 'Damages', 'Broken or damaged items: write what happened and the amount.')}
+      </div>
+      <div class="field"><label>Note (shows on the payslip)</label><input data-pyf="note" maxlength="200" value="${esc(c.note)}" ${dis}></div>
+      <div class="py-net"><span>Gross ${peso(c.grossCents)} − deductions ${peso(c.totalDeductCents)} =</span> <b>Net ${peso(c.netCents)}</b></div>
+      ${fin ? '<p class="hint">🔒 Finalized. Reopen the payroll to change it.</p>' : `<div class="row-btns"><button class="btn" type="button" data-pysave>Save ${esc(user.name.split(' ')[0])}'s pay</button><button class="linkbtn" type="button" data-pyreset>Back to automatic</button></div>`}
+      <p class="note" data-pynote role="status"></p>
     </div>`;
   }
   $('#pyRows').addEventListener('click', async e => {
@@ -544,18 +593,29 @@
     if (e.target.closest('[data-pytoggle]')) { pyOpen.has(uid) ? pyOpen.delete(uid) : pyOpen.add(uid); return renderPayroll(); }
     if (!det) return;
     const add = e.target.closest('[data-pyadd]');
-    if (add) { const box = det.querySelector('.py-lines'); if (box.querySelector('.hint')) box.innerHTML = '';
-      box.insertAdjacentHTML('beforeend', `<div class="py-line"><select data-plk><option value="add" ${add.dataset.pyadd === 'add' ? 'selected' : ''}>+ Addition</option><option value="deduct" ${add.dataset.pyadd === 'deduct' ? 'selected' : ''}>− Deduction</option></select><input data-pll maxlength="60" placeholder="${add.dataset.pyadd === 'add' ? 'e.g. Allowance' : 'e.g. SSS'}"><input data-pla type="number" min="0" step="0.01" placeholder="0.00"><button class="linkbtn bad" type="button" data-pyrm>Remove</button></div>`);
+    if (add) { const box = add.closest('.py-box').querySelector('.py-lines');
+      box.insertAdjacentHTML('beforeend', pyLine(add.dataset.pyadd));
       box.lastElementChild.querySelector('[data-pll]').focus(); return; }
     if (e.target.closest('[data-pyrm]')) { e.target.closest('.py-line').remove(); return; }
     const save = e.target.closest('[data-pysave]'), reset = e.target.closest('[data-pyreset]'); if (!save && !reset) return;
     const f = (k) => det.querySelector(`[data-pyf="${k}"]`).value;
-    const lines = [...det.querySelectorAll('.py-line')].map(l => ({ kind: l.querySelector('[data-plk]').value, label: l.querySelector('[data-pll]').value, amount: l.querySelector('[data-pla]').value })).filter(l => l.label || l.amount);
+    const lines = [...det.querySelectorAll('.py-line[data-kind]')].map(l => ({ kind: l.dataset.kind, label: l.querySelector('[data-pll]').value.trim(), amount: l.querySelector('[data-pla]').value })).filter(l => l.label || l.amount);
+    const miss = !reset && lines.find(l => !l.label || !(+l.amount > 0));
+    if (miss) { const n = det.querySelector('[data-pynote]'); n.textContent = miss.label ? `Enter the amount for "${miss.label}".` : 'Every deduction, addition and damage needs a description / reason.'; n.classList.add('err'); return; }
     try {
       py = await api('/api/staff/payroll', { method: 'PUT', body: reset ? { period: py.period.id, userId: uid, clear: true }
-        : { period: py.period.id, userId: uid, item: { daysWorked: f('daysWorked'), otHours: f('otHours'), otAmount: f('otAmount'), lateDeduct: f('lateDeduct'), undertimeDeduct: f('undertimeDeduct'), lines, note: f('note') } } });
+        : { period: py.period.id, userId: uid, item: { daysWorked: f('daysWorked'), otHours: f('otHours'), otRate: f('otRate'), otAmount: f('otAmount'), lateDeduct: f('lateDeduct'), lateNote: f('lateNote'), undertimeDeduct: f('undertimeDeduct'), utNote: f('utNote'), lines, note: f('note') } } });
       renderPayroll(); toast(reset ? 'Back to the automatic amounts' : 'Pay saved');
     } catch (err) { const n = det.querySelector('[data-pynote]'); n.textContent = err.message; n.classList.add('err'); }
+  });
+  $('#pyRows').addEventListener('input', e => {
+    const det = e.target.closest('.py-detail'); if (!det) return;
+    if (e.target.matches('[data-pyf="otHours"],[data-pyf="otRate"]')) {
+      const g = (k) => { const i = det.querySelector(`[data-pyf="${k}"]`); return +(i.value || i.placeholder) || 0; };
+      det.querySelector('[data-pyf="otAmount"]').placeholder = (g('otHours') * g('otRate')).toFixed(2);
+    }
+    const bx = e.target.closest('[data-pybox]');
+    if (bx) bx.querySelector('[data-pysum]').textContent = (bx.dataset.pybox === 'add' ? '' : '−') + peso(Math.round([...bx.querySelectorAll('[data-pla]')].reduce((a, i) => a + (+i.value || 0), 0) * 100));
   });
   $('#pyPrev').onclick = () => loadPayroll(pyShift(pyPeriod, -1));
   $('#pyNext').onclick = () => loadPayroll(pyShift(pyPeriod, 1));
@@ -579,7 +639,7 @@
     $('#pyRates').innerHTML = pyRates.employees.map(({ user, pay }) => `<tr data-pru="${esc(user.id)}"><td><b>${esc(user.name)}</b> <small class="hint">${esc(user.role)}${user.active ? '' : ' · inactive'}</small></td>
       <td class="num"><input class="cell num" data-prf="dailyRate" type="number" min="0" step="0.01" value="${pay.dailyCents ? pay.dailyCents / 100 : ''}" placeholder="0.00"></td>
       <td class="num"><small class="hint">${pay.dailyCents ? peso(Math.round(pay.dailyCents / 10)) : '—'}</small></td>
-      <td class="num"><input class="cell num sm" data-prf="otPct" type="number" min="100" max="300" value="${pay.otPct}"></td>
+      <td class="num"><input class="cell num sm" data-prf="otRate" type="number" min="0" step="0.01" value="${pay.otRateCents ? pay.otRateCents / 100 : ''}" placeholder="0.00" aria-label="Overtime pesos per hour"></td>
       <td><input type="checkbox" class="toggle" data-prf="deductLate" ${pay.deductLate ? 'checked' : ''} aria-label="Deduct late"></td>
       <td><input type="checkbox" class="toggle" data-prf="deductUndertime" ${pay.deductUndertime ? 'checked' : ''} aria-label="Deduct undertime"></td>
       <td><button class="btn sm" type="button" data-prsave>Save</button></td></tr>`).join('') || '<tr><td colspan="7" class="hint">No employees yet.</td></tr>';
@@ -587,7 +647,7 @@
   $('#pyRates').addEventListener('click', async e => {
     const b = e.target.closest('[data-prsave]'); if (!b) return; const tr = b.closest('tr'), f = (k) => tr.querySelector(`[data-prf="${k}"]`);
     try {
-      await api('/api/staff/payroll', { method: 'PUT', body: { rates: { userId: tr.dataset.pru, dailyRate: f('dailyRate').value || 0, otPct: f('otPct').value, deductLate: f('deductLate').checked, deductUndertime: f('deductUndertime').checked } } });
+      await api('/api/staff/payroll', { method: 'PUT', body: { rates: { userId: tr.dataset.pru, dailyRate: f('dailyRate').value || 0, otRate: f('otRate').value, deductLate: f('deductLate').checked, deductUndertime: f('deductUndertime').checked } } });
       toast('Rate saved'); loadPyRates(); loadPayroll(pyPeriod);
     } catch (err) { fail(err); }
   });
@@ -2208,7 +2268,7 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
-    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'attendance.settings': 'Attendance rules', 'attendance.schedule': 'Employee schedule', 'attendance.edit': 'Fixed attendance', 'attendance.delete': 'Deleted attendance', 'dtr.export': 'Downloaded DTR', 'schedule.add': 'Added a schedule', 'schedule.edit': 'Edited a schedule', 'schedule.delete': 'Deleted a schedule', 'schedule.default': 'Changed the default schedule', 'schedule.assign': 'Assigned a schedule', 'payroll.rate': 'Changed a salary rate', 'payroll.edit': 'Edited payroll', 'payroll.finalize': 'Finalized payroll', 'payroll.reopen': 'Reopened payroll', 'payroll.export': 'Downloaded payroll', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
+    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'attendance.settings': 'Attendance rules', 'attendance.schedule': 'Employee schedule', 'attendance.edit': 'Fixed attendance', 'attendance.delete': 'Deleted attendance', 'dtr.export': 'Downloaded DTR', 'schedule.add': 'Added a schedule', 'schedule.edit': 'Edited a schedule', 'schedule.delete': 'Deleted a schedule', 'schedule.default': 'Changed the default schedule', 'schedule.assign': 'Assigned a schedule', 'schedule.day': 'Changed one day\'s schedule', 'payroll.rate': 'Changed a salary rate', 'payroll.edit': 'Edited payroll', 'payroll.finalize': 'Finalized payroll', 'payroll.reopen': 'Reopened payroll', 'payroll.export': 'Downloaded payroll', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
     'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',

@@ -661,8 +661,11 @@
       <div class="sc-cards" id="scCards"></div>
 
       <div class="box" style="margin-top:16px">
-        <div class="view-head" style="margin:0 0 10px"><h3 style="margin:0">Week view</h3>
-          <div class="row-btns"><button class="btn ghost sm" type="button" id="scPrev">← Previous</button><button class="btn ghost sm" type="button" id="scThis">This week</button><button class="btn ghost sm" type="button" id="scNext">Next →</button></div></div>
+        <div class="sc-bar">
+          <div class="pt-tabs" role="tablist" aria-label="View"><button type="button" data-scmode="day" aria-pressed="false">Day</button><button type="button" data-scmode="week" aria-pressed="true">Week</button></div>
+          <div class="sc-nav"><button class="btn ghost sm" type="button" id="scPrev" aria-label="Previous">←</button><b id="scRange">…</b><button class="btn ghost sm" type="button" id="scNext" aria-label="Next">→</button><button class="btn ghost sm" type="button" id="scThis">Today</button></div>
+        </div>
+        <p class="hint sc-tip">👆 Tap any day from today on to change <b>just that day</b> (another shift or a day off). Past days are locked.</p>
         <div class="sc-assign" id="scAssignBar">
           <span><b id="scSelCount">0</b> selected</span>
           <div class="field"><label for="scAssignSched">Assign schedule</label><select id="scAssignSched"></select></div>
@@ -671,7 +674,7 @@
           <p class="note" id="scAssignNote" role="status"></p>
         </div>
         <div class="table-wrap"><table class="otable sc-grid"><thead id="scGridHead"></thead><tbody id="scGrid"></tbody></table></div>
-        <p class="hint">Tick employees (or the box at the top for everyone), choose a schedule and a start date, then <b>Assign</b>. It replaces what they had from that day on. Days inside a finalized payroll can't change.</p>
+        <p class="hint">To change someone's <b>usual</b> schedule from a date on: tick them (or the top box for everyone), choose a schedule and a start date, then <b>Assign</b>. One-day changes you made stay as they are.</p>
       </div>
     </div>
   </section>
@@ -697,11 +700,11 @@
       </div>
       <p class="pt-alert warn" id="pyWarn" hidden></p>
       <div class="att-kpis" id="pyKpis"></div>
-      <div class="table-wrap"><table class="otable pay-table"><thead><tr><th>Employee</th><th class="num">Days</th><th class="num">Daily rate</th><th class="num">Basic</th><th class="num">OT</th><th class="num">Additions</th><th class="num">Deductions</th><th class="num">Net pay</th><th></th></tr></thead><tbody id="pyRows"></tbody><tfoot id="pyFoot"></tfoot></table></div>
+      <div class="table-wrap"><table class="otable pay-table"><thead><tr><th>Employee</th><th class="num">Days</th><th class="num">Daily rate</th><th class="num">Basic</th><th class="num">Overtime</th><th class="num">Additions</th><th class="num">Deductions</th><th class="num">Damages</th><th class="num">Net pay</th><th></th></tr></thead><tbody id="pyRows"></tbody><tfoot id="pyFoot"></tfoot></table></div>
 
       <details class="box att-fold" id="pyRatesBox" style="margin-top:16px">
         <summary><b>💵 Salary rates</b> <span class="hint">· daily rate, overtime %, late / undertime deductions per employee</span></summary>
-        <div class="table-wrap"><table class="otable"><thead><tr><th>Employee</th><th class="num">Daily rate (₱)</th><th class="num">Per hour</th><th class="num">Overtime %</th><th>Deduct late</th><th>Deduct undertime</th><th></th></tr></thead><tbody id="pyRates"></tbody></table></div>
+        <div class="table-wrap"><table class="otable"><thead><tr><th>Employee</th><th class="num">Daily rate (₱)</th><th class="num">Per hour</th><th class="num">OT ₱ / hour</th><th>Deduct late</th><th>Deduct undertime</th><th></th></tr></thead><tbody id="pyRates"></tbody></table></div>
         <p class="hint">Per hour = daily rate ÷ the hours of their schedule (10 hours on Regular). Overtime pay = overtime hours × per hour × overtime % (125% is the usual rate). A new rate applies to payrolls that aren't finalized yet.</p>
       </details>
       <details class="box att-fold" id="pyHistBox" style="margin-top:16px">
@@ -789,30 +792,40 @@
   </form>
 </dialog>
 
-<dialog id="scDlg" aria-labelledby="scTitle">
-  <form class="dlg" id="scForm" novalidate>
-    <div class="qr-head"><h3 id="scTitle">New schedule</h3><button class="x" type="button" id="scClose" aria-label="Close">×</button></div>
-    <div class="row2">
-      <div class="field"><label for="sfName">Name</label><input id="sfName" maxlength="40" placeholder="e.g. Opening shift"></div>
-      <div class="field"><label for="sfColor">Color</label><input id="sfColor" type="color" value="#066B23"></div>
-    </div>
-    <div class="row4">
-      <div class="field"><label for="sfStart">Time in</label><input id="sfStart" type="time" value="09:00"></div>
-      <div class="field"><label for="sfEnd">Time out</label><input id="sfEnd" type="time" value="19:00"></div>
-      <div class="field"><label for="sfHours">Required hours</label><input id="sfHours" type="number" min="1" max="16" step="0.5" value="10"></div>
-      <div class="field"><label for="sfBreak">Unpaid break (min)</label><input id="sfBreak" type="number" min="0" max="240" value="0"></div>
-      <div class="field"><label for="sfGrace">Grace (min)</label><input id="sfGrace" type="number" min="0" max="120" value="15"></div>
-      <div class="field"><label for="sfDeadline">Time-in deadline</label><input id="sfDeadline" type="time" value="11:00"></div>
-    </div>
-    <div class="promo-row"><span class="lbl">Days off</span><div class="chips" id="sfDays"><button type="button" data-sdo="0" aria-pressed="false">Sun</button><button type="button" data-sdo="1" aria-pressed="false">Mon</button><button type="button" data-sdo="2" aria-pressed="false">Tue</button><button type="button" data-sdo="3" aria-pressed="false">Wed</button><button type="button" data-sdo="4" aria-pressed="false">Thu</button><button type="button" data-sdo="5" aria-pressed="false">Fri</button><button type="button" data-sdo="6" aria-pressed="false">Sat</button></div></div>
-    <div class="row2">
-      <div class="field"><label for="sfLoc">Work location</label><input id="sfLoc" maxlength="60" placeholder="e.g. Main shop"></div>
-      <div class="field"><label>Location pin <span class="opt-t">(optional: for a different branch)</span></label><div class="row-btns"><button class="btn ghost sm" type="button" id="sfHere">📍 Use this device</button><button class="linkbtn" type="button" id="sfPinClear">Use the shop's</button></div><small class="hint" id="sfPin"></small></div>
-    </div>
-    <p class="hint" id="sfSummary"></p>
-    <div class="dlg-foot"><button class="btn" type="submit" id="sfSave">Save schedule</button></div>
+<dialog id="scDlg" class="sc-dlg" aria-labelledby="scTitle">
+  <form class="dlg sc-form" id="scForm" novalidate>
+    <div class="sc-form-head"><h3 id="scTitle">New schedule</h3><button class="x sm" type="button" id="scClose" aria-label="Close">×</button></div>
+    <div class="sc-name"><div class="field"><label for="sfName">Name</label><input id="sfName" maxlength="40" placeholder="e.g. Opening shift"></div>
+      <label class="sc-color" title="Color in the calendar"><span>Color</span><input id="sfColor" type="color" value="#066B23" aria-label="Color"></label></div>
+    <fieldset class="sc-set"><legend>Shift</legend>
+      <div class="sc-row3">
+        <div class="field"><label for="sfStart">Time in</label><input id="sfStart" type="time" value="09:00"></div>
+        <div class="field"><label for="sfEnd">Time out</label><input id="sfEnd" type="time" value="19:00"></div>
+        <div class="field"><label for="sfHours">Hours</label><input id="sfHours" type="number" min="1" max="16" step="0.5" value="10"></div>
+        <div class="field"><label for="sfGrace">Grace (min)</label><input id="sfGrace" type="number" min="0" max="120" value="15"></div>
+        <div class="field"><label for="sfDeadline">Time in by</label><input id="sfDeadline" type="time" value="11:00"></div>
+        <div class="field"><label for="sfBreak">Break (min)</label><input id="sfBreak" type="number" min="0" max="240" value="0"></div>
+      </div>
+      <p class="sc-sum" id="sfSummary"></p>
+    </fieldset>
+    <fieldset class="sc-set"><legend>Days off</legend><div class="chips sc-days" id="sfDays"><button type="button" data-sdo="0" aria-pressed="false">Sun</button><button type="button" data-sdo="1" aria-pressed="false">Mon</button><button type="button" data-sdo="2" aria-pressed="false">Tue</button><button type="button" data-sdo="3" aria-pressed="false">Wed</button><button type="button" data-sdo="4" aria-pressed="false">Thu</button><button type="button" data-sdo="5" aria-pressed="false">Fri</button><button type="button" data-sdo="6" aria-pressed="false">Sat</button></div></fieldset>
+    <fieldset class="sc-set"><legend>Work location</legend>
+      <input id="sfLoc" maxlength="60" placeholder="e.g. Main shop" aria-label="Work location">
+      <div class="sc-pin"><small class="hint" id="sfPin"></small><span><button class="linkbtn" type="button" id="sfHere">📍 Pin this device's spot</button> · <button class="linkbtn" type="button" id="sfPinClear">Use the shop's</button></span></div>
+    </fieldset>
     <p class="note" id="sfNote" role="status"></p>
+    <div class="sc-form-foot"><button class="btn ghost" type="button" id="scCancel">Cancel</button><button class="btn" type="submit" id="sfSave">Save schedule</button></div>
   </form>
+</dialog>
+
+<!-- change ONE day (tap a day in the schedule grid) -->
+<dialog id="scDayDlg" class="sc-day-dlg" aria-labelledby="sdTitle">
+  <div class="dlg">
+    <div class="sc-form-head"><div><p class="eyebrow" id="sdWho">Employee</p><h3 id="sdTitle">Mon, Nov 16</h3></div><button class="x sm" type="button" id="sdClose" aria-label="Close">×</button></div>
+    <p class="hint" id="sdNow"></p>
+    <div class="sd-opts" id="sdOpts" role="listbox" aria-label="Choose the schedule for this day"></div>
+    <p class="note" id="sdNote" role="status"></p>
+  </div>
 </dialog>
 
 <dialog id="attFixDlg" aria-labelledby="afTitle">

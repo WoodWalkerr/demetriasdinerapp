@@ -1304,6 +1304,57 @@ body.sees-cost .field.cost-col{display:grid}
 .sc-cell small{font-weight:400;color:var(--muted);font-size:11px}
 .sc-off{font-size:12px;color:var(--muted)}
 #sfDays{flex-wrap:wrap}
+.sc-bar{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;margin-bottom:6px}
+.sc-nav{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sc-nav b{font-size:15px;min-width:150px;text-align:center}
+.sc-tip{margin:0 0 10px}
+.sc-pick,.sc-past{display:inline-block;border:0;background:transparent;padding:2px;border-radius:10px;font:inherit;color:inherit}
+.sc-pick{cursor:pointer;transition:transform .12s,box-shadow .12s}
+.sc-pick:hover,.sc-pick:focus-visible{box-shadow:0 0 0 2px var(--matcha);transform:translateY(-1px);outline:0}
+.sc-pick .sc-off{display:inline-block;padding:6px 8px;border:1.5px dashed var(--line);border-radius:8px}
+.sc-past{opacity:.5;cursor:not-allowed}
+.sc-cell i,.sc-off i{color:var(--danger);font-style:normal;font-weight:700}
+.sc-grid.day-mode .sc-cell{font-size:14px;padding:8px 12px}
+/* schedule create / edit window */
+.sc-dlg{width:min(520px,calc(100% - 24px))}
+.sc-day-dlg{width:min(440px,calc(100% - 24px))}
+.sc-dlg .dlg,.sc-day-dlg .dlg{width:auto;box-sizing:border-box;padding:18px;overflow-x:hidden}
+.sc-form{display:grid;gap:12px}
+.sc-form-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.sc-form-head h3{margin:0}
+.sc-form-head .eyebrow{margin:0 0 2px}
+.sc-name{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
+.sc-name .field{margin:0}
+.sc-color{display:grid;gap:4px;font-size:13px;font-weight:600;justify-items:center}
+.sc-color input{width:44px;height:40px;padding:2px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);cursor:pointer}
+.sc-set{border:1px solid var(--line);border-radius:14px;padding:10px 12px 12px;margin:0;min-width:0}
+.sc-set legend{padding:0 6px;font-weight:700;font-size:13px}
+.sc-row3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.sc-row3 .field{margin:0;min-width:0}
+.sc-row3 label{font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-row3 input{width:100%;min-width:0;box-sizing:border-box;padding-left:10px;padding-right:6px}
+.sc-row3 input::-webkit-calendar-picker-indicator{margin-left:2px;padding:0}
+.sc-set>input{width:100%;box-sizing:border-box}
+.sc-sum{display:flex;flex-wrap:wrap;gap:4px 12px;margin:8px 0 0;font-size:12.5px;color:var(--muted)}
+.sc-sum .warn-t{flex-basis:100%}
+.sc-days{display:flex;flex-wrap:wrap;gap:6px}
+.sc-days button{flex:1 1 52px}
+.sc-pin{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 10px;margin-top:6px;font-size:13px}
+.sc-form-foot{display:flex;justify-content:flex-end;gap:8px}
+.sc-form .note{margin:0}
+@media (max-width:420px){.sc-row3{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-row3 input::-webkit-calendar-picker-indicator{display:none}.sc-form-foot .btn{flex:1}.sc-bar{flex-direction:column;align-items:stretch}.sc-nav{justify-content:space-between;flex-wrap:nowrap}.sc-nav b{min-width:0;font-size:13.5px;flex:1}}
+/* change one day */
+.sd-opts{display:grid;gap:6px;margin-top:10px}
+.sd-opt{display:grid;grid-template-columns:12px minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);font:inherit;cursor:pointer}
+.sd-opt i{width:12px;height:12px;border-radius:50%;background:var(--sc,var(--muted))}
+.sd-opt.off i{background:transparent;border:2px dashed var(--muted);box-sizing:border-box}
+.sd-opt span{display:grid;min-width:0}
+.sd-opt small{color:var(--muted);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sd-opt em{font-style:normal;color:var(--matcha);font-weight:700}
+.sd-opt:hover,.sd-opt:focus-visible{border-color:var(--matcha);outline:0}
+.sd-opt.on{border-color:var(--matcha);background:color-mix(in srgb,var(--matcha) 8%,var(--card))}
+.sd-opt:disabled{opacity:.6;cursor:wait}
+.sd-reset{justify-self:start;margin-top:4px}
 
 /* ================= Payroll ================= */
 .pay-top{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;margin-bottom:12px}
@@ -1314,12 +1365,26 @@ body.sees-cost .field.cost-col{display:grid}
 .py-name{font-size:15px;text-decoration:none;padding:0}
 .py-row.open td{background:var(--surface)}
 .py-detail>td{background:var(--surface);padding:6px 12px 14px}
-.py-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
-.py-col p{margin:4px 0;font-size:14px}
-.py-wide{grid-column:1/-1}
-.py-line{display:grid;grid-template-columns:140px minmax(0,1fr) 120px auto;gap:6px;margin:6px 0;align-items:center}
-.py-line select,.py-line input{padding:8px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;min-width:0}
-@media (max-width:640px){.py-line{grid-template-columns:1fr 1fr}.py-line [data-pll]{grid-column:1/-1;grid-row:1}}
+.py-panel{display:grid;gap:12px}
+.py-sumline{margin:4px 0 0}
+.py-boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}
+.py-box{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:6px;align-content:start;min-width:0}
+.py-box-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.py-box-h h4{margin:0;font-size:15px}
+.py-box-h b{font-variant-numeric:tabular-nums}
+.py-box .hint{margin:0;font-size:12.5px}
+.py-calc{display:flex;flex-wrap:wrap;gap:6px;align-items:end}
+.py-calc label{display:grid;gap:3px;font-size:12px;font-weight:600;flex:1 1 80px;min-width:0}
+.py-calc span{padding-bottom:10px;color:var(--muted)}
+.py-calc input,.py-line input{padding:8px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;min-width:0;width:100%;box-sizing:border-box}
+.py-lines{display:grid;gap:6px}
+.py-line{display:grid;grid-template-columns:minmax(0,1fr) 120px auto;gap:6px;align-items:center}
+.py-line:not([data-kind]){grid-template-columns:minmax(0,1fr) 120px}
+.py-amt{display:flex;align-items:center;gap:4px;font-weight:600}
+.py-box[data-pybox="damage"]{border-left:4px solid var(--danger)}
+.py-net{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;align-items:baseline;font-size:14px;color:var(--muted)}
+.py-net b{font-size:18px;color:var(--ink)}
+@media (max-width:480px){.py-line,.py-line:not([data-kind]){grid-template-columns:minmax(0,1fr) 110px auto}}
 
 /* ================= Portal: my schedule + notifications ================= */
 .pt-bell{position:relative;width:40px;height:40px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);font-size:17px;cursor:pointer}
@@ -1338,6 +1403,7 @@ body.sees-cost .field.cost-col{display:grid}
 .pt-wd b{display:grid;font-size:14px}.pt-wd b small{font-weight:400;color:var(--muted);font-size:12px}
 .pt-wd span{font-weight:600;font-variant-numeric:tabular-nums}
 .pt-wd>small{color:var(--muted);font-size:12px}
+.pt-chg{font-style:normal;font-weight:700;color:var(--danger)}
 .pt-wd.off{border-left-color:var(--line);opacity:.75}.pt-wd.off span{color:var(--muted);font-weight:500}
 .pt-wd.today{box-shadow:0 0 0 2px var(--matcha) inset}
 .pt-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
