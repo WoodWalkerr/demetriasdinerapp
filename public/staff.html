@@ -229,14 +229,14 @@
           <label class="switchrow cost-col" for="pnocost"><input type="checkbox" class="toggle" id="pnocost"> Missing cost only</label>
         </div>
         <details class="box cats-box" id="catsBox">
-          <summary>🗂️ <b>Categories</b> <span class="hint">· add, rename and set the order they show on the website (also in "All") and the POS</span></summary>
+          <summary>🗂️ <b>Categories</b> <span class="hint">· add, rename, and drag to set the order they show on the website (also in "All") and the POS</span></summary>
           <ol class="cat-list" id="catRows"></ol>
           <form class="cat-add" id="catAddForm" data-perm-box="edit_prices">
             <div class="field grow"><label for="caName">New category</label><input id="caName" maxlength="40" placeholder="e.g. Biscoff Series"></div>
             <div class="field"><label for="caKind">Type</label><select id="caKind"><option value="drink">Drink (sweetness &amp; ice)</option><option value="food">Food</option><option value="plain">Other (no options)</option></select></div>
             <button class="btn" type="submit">Add category</button>
           </form>
-          <p class="hint" style="margin:6px 0 0"><b>Type</b> decides the options customers get: <b>Drink</b> = sweetness, ice and drink add-ons (and it earns stamps) · <b>Food</b> = food add-ons · <b>Other</b> = no options. New categories go to the top; use ↑ ↓ to move them.</p>
+          <p class="hint" style="margin:6px 0 0"><b>Type</b> decides the options customers get: <b>Drink</b> = sweetness, ice and drink add-ons (and it earns stamps) · <b>Food</b> = food add-ons · <b>Other</b> = no options. New categories go to the top. <b>Drag ⠿</b> to change the order (on a computer you can also focus ⠿ and press ↑ / ↓).</p>
         </details>
         <div class="table-wrap"><table class="otable ptable"><thead><tr><th>Photo</th><th>Product</th><th>Category</th><th class="num">Price (₱)</th><th class="num cost-col">Cost (₱)</th><th class="num cost-col">Profit · margin</th><th>Available</th><th>Stock</th><th class="num">Low at</th><th></th></tr></thead><tbody id="prodRows"></tbody></table></div>
         <form class="box add-form" id="addProdForm" data-perm-box="edit_prices">

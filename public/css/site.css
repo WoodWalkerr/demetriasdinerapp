@@ -1179,3 +1179,12 @@ body.sees-cost .field.cost-col{display:grid}
 .cat-add{display:grid;grid-template-columns:minmax(0,1fr) 220px auto;gap:10px;align-items:end}
 .cat-add .btn{justify-content:center}
 @media (max-width:640px){.cat-list li{grid-template-columns:24px minmax(0,1fr) auto;row-gap:6px}.cat-list li [data-ckind]{grid-column:2}.cat-count{grid-column:3;text-align:right}.cat-btns{grid-column:1/-1;justify-content:flex-end}.cat-add{grid-template-columns:1fr}}
+/* drag and drop */
+.cat-list li{grid-template-columns:34px 28px minmax(0,1fr) 120px 90px auto}
+.cat-list:not(.can-drag) li{grid-template-columns:28px minmax(0,1fr) 120px 90px auto}
+.cat-grip{width:34px;height:38px;border:0;border-radius:10px;background:transparent;color:var(--muted);font-size:20px;line-height:1;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.cat-grip:hover,.cat-grip:focus-visible{background:var(--surface);color:var(--ink)}
+.cat-list.is-dragging,.cat-list.is-dragging *{cursor:grabbing!important;user-select:none;-webkit-user-select:none}
+.cat-list li.dragging{box-shadow:0 12px 32px rgba(0,0,0,.22);transform:scale(1.02);background:var(--card);opacity:.97}
+.cat-ph{border:2px dashed var(--matcha)!important;background:color-mix(in srgb,var(--matcha) 8%,transparent)!important;border-radius:12px;padding:0!important;display:block!important}
+@media (max-width:640px){.cat-list li{grid-template-columns:34px 24px minmax(0,1fr) auto}.cat-list li [data-ckind]{grid-column:3}.cat-count{grid-column:4}.cat-btns{grid-column:1/-1}}

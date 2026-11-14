@@ -1057,15 +1057,19 @@
   let catList = [];
   async function loadCats() { try { catList = (await api('/api/staff/categories')).list; } catch {} renderCats(); }
   function renderCats() {
+    if (window.__catDrag) return; // never redraw in the middle of a drag (e.g. when a new order refreshes the page)
     const ep = can('edit_prices'), list = catList.length ? catList : Object.entries(catalog?.categories || {}).map(([key, label]) => ({ key, label, kind: kindOf(key), products: (catalog.products || []).filter(p => p.cat === key).length }));
     const fa = document.activeElement; if (fa?.closest?.('#catRows') && fa.matches('input')) return; // don't redraw while typing a name
-    $('#catRows').innerHTML = list.map((c, i) => `<li data-ck="${esc(c.key)}"><span class="cat-n">${i + 1}</span>
+    const fg = fa?.closest?.('#catRows [data-ck]')?.dataset.ck; // keep keyboard focus on the moved row's ⠿
+    $('#catRows').classList.toggle('can-drag', ep);
+    $('#catRows').innerHTML = list.map((c, i) => `<li data-ck="${esc(c.key)}">${ep ? `<button type="button" class="cat-grip" data-grip aria-label="Drag to move ${esc(c.label)} (or use the arrow keys)" title="Drag to move">⠿</button>` : ''}<span class="cat-n">${i + 1}</span>
       ${ep ? `<input class="cell" data-cl value="${esc(c.label)}" maxlength="40" aria-label="Category name">` : `<b>${esc(c.label)}</b>`}
       ${ep ? `<select class="cell" data-ckind aria-label="Type">${[['drink', 'Drink'], ['food', 'Food'], ['plain', 'Other']].map(([k, v]) => `<option value="${k}" ${c.kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select>` : `<span class="hint">${c.kind}</span>`}
       <span class="hint cat-count">${c.products} product${c.products === 1 ? '' : 's'}</span>
-      ${ep ? `<span class="cat-btns"><button type="button" data-cmv="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button><button type="button" data-cmv="1" ${i === list.length - 1 ? 'disabled' : ''} aria-label="Move down">↓</button><button type="button" class="linkbtn bad" data-cdel ${c.products ? 'disabled title="Move or delete its products first"' : ''}>Delete</button></span>` : ''}</li>`).join('');
+      ${ep ? `<span class="cat-btns"><button type="button" class="linkbtn bad" data-cdel ${c.products ? 'disabled title="Move or delete its products first"' : ''}>Delete</button></span>` : ''}</li>`).join('');
+    if (fg && fa?.matches?.('[data-grip]')) $('#catRows').querySelector(`[data-ck="${CSS.escape(fg)}"] [data-grip]`)?.focus();
   }
-  const saveCats = async (list, msg) => { try { catList = (await api('/api/staff/categories', { method: 'PUT', body: { list } })).list; toast(msg); loadCatalog(); } catch (err) { fail(err); loadCats(); } };
+  const saveCats = async (list, msg) => { try { catList = (await api('/api/staff/categories', { method: 'PUT', body: { list } })).list; renderCats(); toast(msg); loadCatalog(); } catch (err) { fail(err); loadCats(); } };
   const curList = () => catList.map(c => ({ key: c.key, label: c.label, kind: c.kind }));
   $('#catRows').addEventListener('click', e => {
     const li = e.target.closest('[data-ck]'); if (!li) return; const i = catList.findIndex(c => c.key === li.dataset.ck);
@@ -1075,6 +1079,51 @@
       if (!confirm(`Delete the category "${catList[i].label}"?`)) return;
       api('/api/staff/categories', { method: 'DELETE', body: { key: li.dataset.ck } }).then(r => { catList = r.list; toast('Category deleted'); loadCatalog(); }).catch(err => fail(err));
     }
+  });
+  // Drag and drop: grab ⠿ and move the row; the new order saves when you let go. (Pointer events work with a mouse,
+  // a finger or a pen. Keyboard: focus ⠿ and press ↑ / ↓.)
+  let drag = null;
+  const rowsBox = $('#catRows');
+  rowsBox.addEventListener('pointerdown', e => {
+    const g = e.target.closest('[data-grip]'); if (!g || e.button > 0) return;
+    e.preventDefault();
+    const li = g.closest('li'), r = li.getBoundingClientRect();
+    window.__catDrag = drag = { li, id: e.pointerId, dy: e.clientY - r.top, start: [...rowsBox.children].indexOf(li), ph: document.createElement('li') };
+    drag.ph.className = 'cat-ph'; drag.ph.style.height = r.height + 'px';
+    li.after(drag.ph);
+    Object.assign(li.style, { position: 'fixed', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', zIndex: 50 });
+    li.classList.add('dragging'); rowsBox.classList.add('is-dragging');
+    try { g.setPointerCapture(e.pointerId); } catch {} // keeps the drag going if the finger leaves the handle
+  });
+  rowsBox.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    e.preventDefault();
+    drag.li.style.top = (e.clientY - drag.dy) + 'px';
+    // put the gap before the first row whose middle is below the finger
+    const others = [...rowsBox.children].filter(x => x !== drag.li && x !== drag.ph);
+    const before = others.find(x => { const b = x.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; });
+    if (before) { if (drag.ph.nextSibling !== before) rowsBox.insertBefore(drag.ph, before); } else if (rowsBox.lastElementChild !== drag.ph) rowsBox.append(drag.ph);
+    // scroll the page when dragging near the top or bottom edge
+    if (e.clientY < 70) window.scrollBy(0, -12); else if (e.clientY > innerHeight - 70) window.scrollBy(0, 12);
+  });
+  const endDrag = (e, cancel) => {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    const { li, ph, start } = drag; drag = window.__catDrag = null;
+    ph.replaceWith(li); li.removeAttribute('style'); li.classList.remove('dragging'); rowsBox.classList.remove('is-dragging');
+    const keys = [...rowsBox.children].map(x => x.dataset.ck), end = keys.indexOf(li.dataset.ck);
+    if (cancel || end === start) return renderCats();
+    const by = Object.fromEntries(curList().map(c => [c.key, c]));
+    saveCats(keys.map(k => by[k]), `Moved ${by[li.dataset.ck].label} to place ${end + 1}`);
+  };
+  rowsBox.addEventListener('pointerup', e => endDrag(e));
+  rowsBox.addEventListener('pointercancel', e => endDrag(e, true));
+  rowsBox.addEventListener('keydown', e => {
+    const g = e.target.closest('[data-grip]'); if (!g || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+    e.preventDefault();
+    const l = curList(), i = l.findIndex(c => c.key === g.closest('li').dataset.ck), j = i + (e.key === 'ArrowUp' ? -1 : 1);
+    if (j < 0 || j >= l.length) return;
+    [l[i], l[j]] = [l[j], l[i]];
+    saveCats(l, `Moved ${l[j].label} to place ${j + 1}`).then(() => rowsBox.querySelector(`[data-ck="${CSS.escape(l[j].key)}"] [data-grip]`)?.focus());
   });
   $('#catRows').addEventListener('change', e => {
     const li = e.target.closest('[data-ck]'); if (!li) return; const l = curList(), c = l.find(x => x.key === li.dataset.ck);
