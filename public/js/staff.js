@@ -184,6 +184,7 @@
     renderTicket();
   }
   async function showApp(d) {
+    if (!d.user.perms.length) { location.replace('/portal'); return; } // employees (time in / out only) use the portal
     setMe(d);
     $('#loginView').hidden = true; $('#app').hidden = false;
     try { ac ||= new (window.AudioContext || window.webkitAudioContext)(); } catch {}
@@ -235,16 +236,169 @@
   $$('[data-theme-set]').forEach(b => b.onclick = () => setTheme(b.dataset.themeSet));
 
   // ===================================================================== tabs
-  const TABS = ['board', 'pos', 'orders', 'shift', 'products', 'sales', 'finance', 'settings', 'users', 'activity'];
+  const TABS = ['board', 'pos', 'orders', 'shift', 'products', 'sales', 'finance', 'settings', 'users', 'activity', 'attendance'];
   function route() {
     let tab = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'board';
     const link = $(`.tabs a[data-tab="${tab}"]`);
-    if (link?.hidden) tab = 'board';
+    if (link?.hidden) tab = $$('.tabs a').find(a => !a.hidden)?.dataset.tab || 'board'; // first tab this person may use
     TABS.forEach(t => { $('#view-' + t).hidden = t !== tab; });
     $$('.tabs a').forEach(a => a.dataset.tab === tab ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current'));
-    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); loadDeals(); }, pos: renderPosMenu, activity: loadActivity }[tab] || (() => {}))();
+    ({ orders: loadHistory, shift: loadShift, sales: () => { loadDashboard(); loadReport(); }, finance: loadFinance, products: renderProducts, users: loadUsers, settings: () => { renderSettings(); loadCodes(); loadDeals(); }, pos: renderPosMenu, activity: loadActivity, attendance: loadAttendance }[tab] || (() => {}))();
   }
   window.addEventListener('hashchange', route);
+
+
+  // ===================================================================== ATTENDANCE (DTR)
+  // Admin view of everyone's time in / out. Employees use /portal. Permission: attendance.
+  let att = null, attRange = null;
+  const aTime = (t) => (t ? new Date(t).toLocaleTimeString('en-PH', { timeZone: catalog?.tz || 'Asia/Manila', hour: 'numeric', minute: '2-digit' }) : '—');
+  const aHm = (m) => (m == null ? '—' : `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`);
+  const aT12 = (hhmm) => { const h = +hhmm.slice(0, 2), m = hhmm.slice(3); return `${h % 12 || 12}${m === '00' ? '' : ':' + m} ${h < 12 ? 'AM' : 'PM'}`; };
+  const aDate = (d) => new Date(d + 'T00:00:00Z').toLocaleDateString('en-PH', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+  const A_CHIP = { rest: ['Rest day', 'rest'], pending: ['Not in yet', 'pending'], absent: ['Absent', 'bad'], present: ['On time', 'ok'], late: ['Late', 'warn'], working: ['Working', 'ok'], no_timeout: ['No time-out', 'warn'], future: ['', ''] };
+  const aChip = (r) => { const [l, c] = r.status === 'working' && r.presence === 'late' ? ['Working · late', 'warn'] : A_CHIP[r.status] || [r.status, ''];
+    return `<span class="att-chip ${c}">${esc(l + (r.completion === 'undertime' ? ' · Undertime' : r.completion === 'complete' && r.overtimeMin ? ' · Overtime' : ''))}</span>`; };
+  const aLoc = (r, k) => { const d = r[k + 'DistM'], out = r[k + 'Outside']; return d == null ? '' : ` <small class="${out ? 'warn-t' : 'hint'}" title="Distance from the shop">${out ? '⚠️ ' : '📍'}${d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d + ' m'}</small>`; };
+  const aNotes = (r) => esc([...(r.flags || []).filter(f => !/outside the shop area/.test(f)), r.editReason ? `“${r.editReason}”` : ''].filter(Boolean).join(' · '));
+  async function loadAttendance() {
+    try { att = await api('/api/staff/dtr?view=today'); renderAttToday(); renderAttSettings(); if (!attRange) attQuick('month'); }
+    catch (err) { fail(err); }
+  }
+  function renderAttToday() {
+    const o = att.overview, set = att.settings;
+    $('#attOffNote').hidden = !!set.enabled; if (!set.enabled) $('#attSetBox').open = true;
+    $('#attToday').textContent = `· ${aDate(att.today)}`;
+    $('#attKpis').innerHTML = [['Present', o.present, 'ok'], ['On time', o.onTime, 'ok'], ['Late', o.late, o.late ? 'warn' : ''], ['Absent', o.absent, o.absent ? 'bad' : ''], ['Not in yet', o.pending, ''],
+      ['Working now', o.working, ''], ['Undertime', o.undertime, o.undertime ? 'warn' : ''], ['Outside area', o.outside, o.outside ? 'warn' : ''], ['No time-out yesterday', o.missedTimeOut, o.missedTimeOut ? 'warn' : '']]
+      .map(([k, v, c]) => `<div class="att-kpi ${c}"><b>${v}</b><span>${k}</span></div>`).join('');
+    $('#attTodayRows').innerHTML = att.list.map(({ user, row: r, openYesterday }) => `<tr>
+      <td><b>${esc(user.name)}</b><small class="hint"> @${esc(user.username)}</small></td><td>${aChip(r)}${r.lateMin ? ` <small class="warn-t">${r.lateMin}m late</small>` : ''}</td>
+      <td>${aTime(r.timeIn)}${aLoc(r, 'in')}</td><td>${aTime(r.timeOut)}${aLoc(r, 'out')}</td>
+      <td class="num">${r.workedMin != null ? aHm(r.workedMin) : '—'}</td>
+      <td><small>${aNotes(r)}${openYesterday ? `${r.flags?.length ? ' · ' : ''}<b class="warn-t">No time-out yesterday</b>` : ''}</small></td>
+      <td><button class="linkbtn" type="button" data-afix="${esc(user.id)}" data-adate="${att.today}">Fix</button>${openYesterday ? ` <button class="linkbtn" type="button" data-afix="${esc(user.id)}" data-adate="${addDaysStr(att.today, -1)}">Fix yesterday</button>` : ''}</td></tr>`).join('')
+      || '<tr><td colspan="7" class="hint">No employees yet. Add them in Users (role: Employee).</td></tr>';
+    const sel = $('#arUser'), cur = sel.value;
+    sel.innerHTML = '<option value="">Everyone</option>' + att.schedules.map(s => `<option value="${esc(s.user.id)}">${esc(s.user.name)}</option>`).join('');
+    sel.value = att.schedules.some(s => s.user.id === cur) ? cur : '';
+  }
+  const addDaysStr = (s, n) => { const t = new Date(s + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  function attQuick(k) {
+    const today = att?.today || new Date().toISOString().slice(0, 10), [y, m] = today.split('-').map(Number), pad = (n) => String(n).padStart(2, '0');
+    const end = (yy, mm) => new Date(Date.UTC(yy, mm, 0)).toISOString().slice(0, 10);
+    let from, to = today;
+    if (k === 'week') { const dow = (new Date(today + 'T00:00:00Z').getUTCDay() + 6) % 7; from = addDaysStr(today, -dow); }
+    else if (k === 'half1') { from = `${y}-${pad(m)}-01`; to = `${y}-${pad(m)}-15`; }
+    else if (k === 'half2') { from = `${y}-${pad(m)}-16`; to = end(y, m); }
+    else if (k === 'last') { const ly = m === 1 ? y - 1 : y, lm = m === 1 ? 12 : m - 1; from = `${ly}-${pad(lm)}-01`; to = end(ly, lm); }
+    else from = `${y}-${pad(m)}-01`;
+    $('#arFrom').value = from; $('#arTo').value = to; loadAttRange();
+  }
+  $$('[data-arq]').forEach(b => b.onclick = () => attQuick(b.dataset.arq));
+  function attLinks() {
+    const q = `from=${$('#arFrom').value}&to=${$('#arTo').value}${$('#arUser').value ? `&user=${$('#arUser').value}` : ''}`;
+    $('#arXlsx').href = `/api/staff/dtr?format=xlsx&${q}`; $('#arPdf').href = `/api/staff/dtr?format=pdf&${q}`;
+    return q;
+  }
+  async function loadAttRange() {
+    if (!$('#arFrom').value || !$('#arTo').value) return toast('Choose the dates.');
+    const q = attLinks();
+    try { attRange = await api(`/api/staff/dtr?${q}`); } catch (err) { return fail(err); }
+    const S = attRange.employees;
+    $('#arSummary').innerHTML = S.map(({ user, summary: t }) => `<tr><td><button class="linkbtn" type="button" data-arone="${esc(user.id)}"><b>${esc(user.name)}</b></button></td>
+      <td class="num">${t.present}</td><td class="num ${t.late ? 'warn-t' : ''}">${t.late}</td><td class="num ${t.absent ? 'bad' : ''}">${t.absent}</td><td class="num">${t.rest}</td><td class="num ${t.incomplete ? 'warn-t' : ''}">${t.incomplete}</td>
+      <td class="num"><b>${aHm(t.workedMin)}</b></td><td class="num">${aHm(t.undertimeMin)}</td><td class="num">${aHm(t.overtimeMin)}</td><td class="num ${t.outside ? 'warn-t' : ''}">${t.outside}</td></tr>`).join('')
+      || '<tr><td colspan="10" class="hint">No employees.</td></tr>';
+    // daily records: one block per employee (newest first)
+    $('#arDetail').innerHTML = S.map(({ user, rows }) => `<h4 class="tiers-h" style="margin-top:16px">${esc(user.name)}</h4>
+      <div class="table-wrap"><table class="otable att-table"><thead><tr><th>Date</th><th>Status</th><th>Time in</th><th>Time out</th><th class="num">Hours</th><th class="num">Late</th><th class="num">Under</th><th class="num">Over</th><th>Notes</th><th></th></tr></thead><tbody>
+      ${rows.filter(r => r.status !== 'future').slice().reverse().map(r => `<tr class="${r.status}"><td>${aDate(r.date)}</td><td>${aChip(r)}</td><td>${aTime(r.timeIn)}${aLoc(r, 'in')}</td><td>${aTime(r.timeOut)}${aLoc(r, 'out')}</td>
+        <td class="num">${r.workedMin != null ? aHm(r.workedMin) : '—'}</td><td class="num">${r.lateMin ? r.lateMin + 'm' : ''}</td><td class="num">${r.undertimeMin ? aHm(r.undertimeMin) : ''}</td><td class="num">${r.overtimeMin ? aHm(r.overtimeMin) : ''}</td>
+        <td><small>${aNotes(r)}</small></td><td><button class="linkbtn" type="button" data-afix="${esc(user.id)}" data-adate="${r.date}">${r.timeIn ? 'Fix' : 'Add'}</button></td></tr>`).join('')}
+      </tbody></table></div>`).join('');
+  }
+  $('#arLoad').onclick = loadAttRange;
+  ['#arFrom', '#arTo', '#arUser'].forEach(s => $(s).addEventListener('change', attLinks));
+  $('#arUser').addEventListener('change', loadAttRange);
+  $('#attRefresh').onclick = loadAttendance;
+  $('#arSummary').addEventListener('click', e => { const b = e.target.closest('[data-arone]'); if (b) { $('#arUser').value = b.dataset.arone; loadAttRange(); } });
+  // ---- fix a day (corrections need a reason; they're in the Activity log)
+  let afWho = null;
+  const findRow = (uid, date) => att?.list.find(x => x.user.id === uid && date === att.today)?.row || attRange?.employees.find(x => x.user.id === uid)?.rows.find(r => r.date === date);
+  const hhmmOf = (t) => (t ? new Date(t).toLocaleTimeString('en-GB', { timeZone: catalog?.tz || 'Asia/Manila', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }) : '');
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-afix]'); if (!b || !$('#view-attendance').contains(b)) return;
+    const uid = b.dataset.afix, date = b.dataset.adate, r = findRow(uid, date);
+    afWho = uid;
+    $('#afWho').textContent = att.schedules.find(s => s.user.id === uid)?.user.name || 'Employee';
+    $('#afDate').value = date; $('#afDate').max = att.today; $('#afIn').value = hhmmOf(r?.timeIn) || (att.schedules.find(s => s.user.id === uid)?.start || ''); $('#afOut').value = hhmmOf(r?.timeOut);
+    $('#afWhy').value = ''; $('#afNote').textContent = ''; $('#afDel').hidden = !r?.timeIn;
+    $('#attFixDlg').showModal(); setTimeout(() => $('#afWhy').focus(), 50);
+  });
+  $('#afClose').onclick = () => $('#attFixDlg').close();
+  const afterFix = async (msg) => { $('#attFixDlg').close(); toast(msg); await loadAttendance(); if (attRange) loadAttRange(); };
+  $('#attFixForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    try { await api('/api/staff/dtr', { method: 'PUT', body: { userId: afWho, date: $('#afDate').value, timeIn: $('#afIn').value, timeOut: $('#afOut').value, reason: $('#afWhy').value } }); afterFix('Attendance saved'); }
+    catch (err) { $('#afNote').textContent = err.message; $('#afNote').classList.add('err'); }
+  });
+  $('#afDel').onclick = async () => {
+    if (!$('#afWhy').value.trim()) { $('#afNote').textContent = 'Write the reason first.'; $('#afNote').classList.add('err'); return $('#afWhy').focus(); }
+    if (!confirm('Delete this day\'s time in / out? The day will count as absent (unless it\'s a rest day).')) return;
+    try { await api('/api/staff/dtr', { method: 'DELETE', body: { userId: afWho, date: $('#afDate').value, reason: $('#afWhy').value } }); afterFix('Record deleted'); }
+    catch (err) { $('#afNote').textContent = err.message; $('#afNote').classList.add('err'); }
+  };
+  // ---- rules + shop location + schedules
+  let asRest = [], asPoint;
+  function renderAttSettings() {
+    const s = att.settings;
+    if (!document.activeElement?.closest?.('#attSetBox')) {
+      $('#asOn').checked = s.enabled; $('#asStart').value = s.start; $('#asGrace').value = s.graceMin; $('#asDeadline').value = s.deadline; $('#asAfter').value = s.afterDeadline;
+      $('#asHours').value = s.requiredHours; $('#asBreak').value = s.breakMin; $('#asLoc').checked = s.requireLocation; $('#asRadius').value = s.radiusM; $('#asBlock').checked = s.blockOutside;
+      asRest = [...s.restDays]; asPoint = undefined;
+    }
+    $$('#asRest [data-rd]').forEach(b => b.setAttribute('aria-pressed', asRest.includes(+b.dataset.rd)));
+    const sh = att.shop;
+    $('#asShop').innerHTML = sh ? `Shop location: <b>${sh.lat.toFixed(5)}, ${sh.lng.toFixed(5)}</b> ${sh.from === 'delivery' ? '(the store pin from Delivery settings)' : '(set here)'} · <a href="https://www.google.com/maps?q=${sh.lat},${sh.lng}" target="_blank" rel="noopener">check on the map</a>`
+      : '<b class="warn-t">No shop location yet.</b> Stand inside the shop and tap the button below (or set the store pin in Settings → Delivery). Until then, distances can\'t be checked.';
+    $('#asSched').innerHTML = att.schedules.map(x => `<tr data-asu="${esc(x.user.id)}"><td><b>${esc(x.user.name)}</b><small class="hint"> ${esc(x.user.role)}</small>${x.custom ? ' <small class="att-chip">own schedule</small>' : ''}</td>
+      <td><input type="checkbox" class="toggle" data-ast ${x.track ? 'checked' : ''} aria-label="Track attendance"></td>
+      <td><input class="cell" type="time" data-asf="start" value="${x.start}"></td><td><input class="cell" type="time" data-asf="deadline" value="${x.deadline}"></td>
+      <td><input class="cell num sm" type="number" min="1" max="16" step="0.5" data-asf="requiredHours" value="${x.requiredHours}"></td>
+      <td><div class="chips sm-chips">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => `<button type="button" data-asr="${i}" aria-pressed="${x.restDays.includes(i)}" title="${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i]}">${d}</button>`).join('')}</div></td>
+      <td><button class="btn sm" type="button" data-assave>Save</button> <button class="linkbtn" type="button" data-asreset ${x.custom ? '' : 'hidden'}>Use shop rules</button></td></tr>`).join('');
+  }
+  $('#asRest').addEventListener('click', e => { const b = e.target.closest('[data-rd]'); if (!b) return; const d = +b.dataset.rd; asRest = asRest.includes(d) ? asRest.filter(x => x !== d) : [...asRest, d]; b.setAttribute('aria-pressed', asRest.includes(d)); });
+  const saveAttSettings = async (extra = {}) => {
+    try {
+      const r = await api('/api/staff/dtr', { method: 'PUT', body: { settings: { enabled: $('#asOn').checked, start: $('#asStart').value, graceMin: $('#asGrace').value, deadline: $('#asDeadline').value, afterDeadline: $('#asAfter').value,
+        requiredHours: $('#asHours').value, breakMin: $('#asBreak').value, restDays: asRest, requireLocation: $('#asLoc').checked, radiusM: $('#asRadius').value, blockOutside: $('#asBlock').checked, ...extra } } });
+      Object.assign(att, r); document.activeElement?.blur?.(); renderAttSettings(); renderAttToday(); toast('Attendance rules saved'); loadAttendance();
+    } catch (err) { fail(err); }
+  };
+  $('#asSave').onclick = () => saveAttSettings();
+  $('#asOn').onchange = () => saveAttSettings();
+  $('#asHere').onclick = () => {
+    if (!navigator.geolocation) return toast("This browser can't share its location.");
+    toast('📍 Getting this device\'s location…');
+    navigator.geolocation.getCurrentPosition(p => {
+      if (p.coords.accuracy > 100 && !confirm(`Your location is only accurate to about ${Math.round(p.coords.accuracy)} m. Use it anyway? (Going near a window or turning on Wi-Fi helps.)`)) return;
+      saveAttSettings({ lat: p.coords.latitude, lng: p.coords.longitude });
+    }, e => toast(e.code === 1 ? 'Location is blocked for this site. Allow it in the browser settings.' : "Couldn't get the location. Try again."), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+  };
+  $('#asUseStore').onclick = () => saveAttSettings({ lat: null });
+  $('#asSched').addEventListener('click', async e => {
+    const tr = e.target.closest('[data-asu]'); if (!tr) return;
+    const r = e.target.closest('[data-asr]'); if (r) { r.setAttribute('aria-pressed', r.getAttribute('aria-pressed') !== 'true'); return; }
+    const save = e.target.closest('[data-assave]'), reset = e.target.closest('[data-asreset]'); if (!save && !reset) return;
+    const s = att.settings, val = (k) => tr.querySelector(`[data-asf="${k}"]`).value;
+    const rest = [...tr.querySelectorAll('[data-asr]')].filter(b => b.getAttribute('aria-pressed') === 'true').map(b => +b.dataset.asr);
+    const body = reset ? { userId: tr.dataset.asu, track: tr.querySelector('[data-ast]').checked } : { userId: tr.dataset.asu, track: tr.querySelector('[data-ast]').checked,
+      ...(val('start') !== s.start ? { start: val('start') } : {}), ...(val('deadline') !== s.deadline ? { deadline: val('deadline') } : {}),
+      ...(+val('requiredHours') !== +s.requiredHours ? { requiredHours: val('requiredHours') } : {}), ...(JSON.stringify(rest) !== JSON.stringify([...s.restDays].sort()) ? { restDays: rest } : {}) };
+    try { const r2 = await api('/api/staff/dtr', { method: 'PUT', body: { schedule: body } }); Object.assign(att, r2); toast('Schedule saved'); loadAttendance(); } catch (err) { fail(err); }
+  });
+  $('#asSched').addEventListener('change', async e => { if (e.target.matches('[data-ast]')) e.target.closest('tr').querySelector('[data-assave]').click(); });
 
   // ===================================================================== catalog + settings
   async function loadCatalog() {
@@ -1861,7 +2015,7 @@
     'pos.discount': 'Gave a discount', 'cash.in': 'Cash in', 'cash.out': 'Cash out', 'shift.open': 'Opened shift', 'shift.close': 'Closed shift',
     'expense.add': 'Added expense', 'expense.delete': 'Deleted expense', stock: 'Changed stock',
     'settings.ordering': 'Online ordering / payments', 'settings.qr': 'GCash QR', 'settings.delivery': 'Delivery settings', 'settings.hours': 'Opening hours', 'settings.promos': 'Happy hour & promos', 'settings.summary': 'Summary email',
-    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
+    'settings.loyalty': 'Stamp card settings', 'settings.upsell': 'Cart suggestions', 'loyalty.adjust': 'Changed stamps by hand', 'loyalty.attach': 'Added a stamp to an order', 'attendance.settings': 'Attendance rules', 'attendance.schedule': 'Employee schedule', 'attendance.edit': 'Fixed attendance', 'attendance.delete': 'Deleted attendance', 'dtr.export': 'Downloaded DTR', 'settings.newsletter': 'Newsletter settings', 'news.export': 'Exported the newsletter list', 'news.remove': 'Removed a newsletter subscriber',
     'deal.add': 'Created Buy 1 Take 1 deal', 'deal.edit': 'Changed Buy 1 Take 1 deal', 'deal.delete': 'Deleted Buy 1 Take 1 deal',
     'code.add': 'Created promo code', 'code.edit': 'Changed promo code', 'code.delete': 'Deleted promo code',
     'user.add': 'Added staff', 'user.edit': 'Edited staff', 'user.delete': 'Deleted staff', 'user.password': 'Changed own password', login: 'Signed in', 'login.failed': 'Failed sign-in',
@@ -1907,7 +2061,7 @@
   let usersData = null, editUser = null;
   async function loadUsers() { try { usersData = await api('/api/staff/users'); renderUsers(); } catch (e) { fail(e); } }
   function renderUsers() {
-    $('#userRows').innerHTML = usersData.users.map(u => `<tr><td><b>${esc(u.name)}</b>${u.id === me.user.id ? ' <small class="hint">(you)</small>' : ''}</td><td class="mono">${esc(u.username)}</td>
+    $('#userRows').innerHTML = usersData.users.map(u => `<tr><td><b>${esc(u.name)}</b>${u.id === me.user.id ? ' <small class="hint">(you)</small>' : ''}${u.mustChangePassword ? ' <small class="att-chip warn" title="Still using the temporary password you gave them">temporary password</small>' : ''}</td><td class="mono">${esc(u.username)}</td>
       <td>${esc(usersData.roles[u.role]?.label || u.role)}</td><td class="perm-chips">${u.perms.map(p => `<span>${esc(p.replace('_', ' '))}</span>`).join('')}</td>
       <td>${u.active ? '<span class="pill paid">Active</span>' : '<span class="pill cancelled">Off</span>'}</td><td class="when">${u.lastLogin ? fmtDT(u.lastLogin) : 'never'}</td>
       <td><button class="linkbtn" type="button" data-edit-user="${esc(u.id)}">Edit</button></td></tr>`).join('');

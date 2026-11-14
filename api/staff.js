@@ -17,6 +17,7 @@ import { deals } from '../lib/staff/deals.js';
 import { loyalty } from '../lib/staff/loyalty.js';
 import { subscribers } from '../lib/staff/subscribers.js';
 import { categories } from '../lib/staff/categories.js';
+import { attendance, dtr } from '../lib/staff/dtr.js';
 
 const ROUTES = {
   login:    [['GET', 'POST'], login],
@@ -46,6 +47,8 @@ const ROUTES = {
   loyalty:     [['GET', 'POST'], loyalty],
   subscribers: [['GET', 'DELETE'], subscribers],
   categories:  [['GET', 'POST', 'PUT', 'DELETE'], categories],
+  attendance:  [['GET', 'POST'], attendance],          // employee: my time in / out and my DTR
+  dtr:         [['GET', 'PUT', 'DELETE'], dtr],        // admin: everyone's attendance (permission: attendance)
 };
 const wrapped = Object.fromEntries(Object.entries(ROUTES).map(([k, [methods, fn]]) => [k, route(methods, async (req, res) => { await ensureSchema(); return fn(req, res); })]));
 

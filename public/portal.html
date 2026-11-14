@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Demetria's Diner · Employee Portal</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#066B23">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='19' fill='%23066B23'/%3E%3Cpath d='M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z' fill='%23111'/%3E%3Ccircle cx='16.2' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3Ccircle cx='23.8' cy='21.5' r='2.6' fill='%23FFF9E8'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@500;600;700;800&family=Instrument+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/css/site.css">
+<script>try{var t=localStorage.getItem("dd-theme");if(t==="dark"||t==="light")document.documentElement.dataset.theme=t;}catch(e){}</script>
+</head>
+<body class="portal-page">
+<header class="pt-head">
+  <a class="logo" href="/portal" aria-label="Employee portal home">
+    <svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="19" fill="var(--matcha)"/><path d="M10.5 31 Q9 21 12.5 16.5 L11.5 8 L17 12.6 Q20 11.6 23 12.6 L28.5 8 L27.5 16.5 Q31 21 29.5 31 Z" fill="#111"/><circle cx="16.2" cy="21.5" r="2.6" fill="#FFF9E8"/><circle cx="23.8" cy="21.5" r="2.6" fill="#FFF9E8"/></svg>
+    <span>demetria's<br><small>employee portal</small></span>
+  </a>
+  <div class="pt-head-r" id="ptUserBar" hidden><a class="linkbtn" href="/staff" id="ptStaffLink" hidden>Staff screens</a><button class="btn ghost sm" type="button" id="ptLogout">Sign out</button></div>
+</header>
+
+<!-- sign in -->
+<main class="pt-wrap" id="vLogin" hidden>
+  <form class="box pt-card" id="loginForm" novalidate>
+    <h1 class="pt-h">Sign in</h1>
+    <p class="hint">Use the username and password your admin gave you.</p>
+    <div class="field"><label for="lUser">Username</label><input id="lUser" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" required></div>
+    <div class="field"><label for="lPw">Password</label><input id="lPw" type="password" autocomplete="current-password" maxlength="100" required></div>
+    <button class="btn" type="submit" id="lGo">Sign in</button>
+    <p class="note" id="lNote" role="status"></p>
+    <p class="hint-sm">Forgot your password? Ask your admin to reset it. You'll choose a new one when you sign in.</p>
+  </form>
+</main>
+
+<!-- first sign-in: choose your own password -->
+<main class="pt-wrap" id="vPw" hidden>
+  <form class="box pt-card" id="pwForm" novalidate>
+    <h1 class="pt-h" id="pwTitle">Choose your password</h1>
+    <p class="hint" id="pwHint">You signed in with a temporary password. Choose your own to continue. Only you will know it.</p>
+    <div class="field"><label for="pwCur">Current (temporary) password</label><input id="pwCur" type="password" autocomplete="current-password" maxlength="100" required></div>
+    <div class="field"><label for="pwNew">New password <span class="opt-t">(at least 6 characters)</span></label><input id="pwNew" type="password" autocomplete="new-password" maxlength="100" required></div>
+    <div class="field"><label for="pwNew2">New password again</label><input id="pwNew2" type="password" autocomplete="new-password" maxlength="100" required></div>
+    <button class="btn" type="submit" id="pwGo">Save my password</button>
+    <button class="linkbtn" type="button" id="pwCancel" hidden>Cancel</button>
+    <p class="note" id="pwNote" role="status"></p>
+  </form>
+</main>
+
+<!-- dashboard -->
+<main class="pt-wrap" id="vHome" hidden>
+  <section class="pt-hello">
+    <div><p class="eyebrow" id="hDate">Today</p><h1 class="pt-h" id="hName">Hi!</h1></div>
+    <div class="pt-clock" id="hClock" aria-live="off">--:--</div>
+  </section>
+
+  <p class="pt-alert warn" id="hOff" hidden>Attendance isn't switched on yet. Your admin will tell you when to start timing in.</p>
+  <p class="pt-alert warn" id="hYesterday" hidden></p>
+
+  <section class="box pt-today" id="hToday">
+    <div class="pt-today-top"><h2>Today</h2><span class="att-chip" id="tChip">…</span></div>
+    <p class="hint" id="tSched"></p>
+    <div class="pt-times">
+      <div><span>Time in</span><b id="tIn">—</b><small id="tInLoc"></small></div>
+      <div><span>Time out</span><b id="tOut">—</b><small id="tOutLoc"></small></div>
+      <div><span>Hours</span><b id="tHours">0h 00m</b><small id="tReq"></small></div>
+    </div>
+    <div class="pt-bar" aria-hidden="true"><i id="tBar"></i></div>
+    <p class="hint-sm" id="tMsg"></p>
+    <button class="btn pt-punch" type="button" id="punchBtn" hidden>Time in</button>
+    <p class="note" id="punchNote" role="status"></p>
+    <p class="hint-sm pt-loc-hint" id="locHint"></p>
+  </section>
+
+  <section class="box">
+    <div class="pt-row-head"><h2>My month</h2><input type="month" id="mPick" aria-label="Month"></div>
+    <div class="pt-stats" id="mStats"></div>
+    <div class="pt-dl"><span>Download my DTR:</span><a class="btn ghost sm" id="dlX" href="#" download>📊 Excel</a><a class="btn ghost sm" id="dlP" href="#" download>📄 PDF</a></div>
+    <div class="pt-list" id="mList"></div>
+  </section>
+
+  <details class="box pt-more">
+    <summary>🔒 Change my password</summary>
+    <form id="pw2Form" novalidate>
+      <div class="field"><label for="p2Cur">Current password</label><input id="p2Cur" type="password" autocomplete="current-password" maxlength="100"></div>
+      <div class="field"><label for="p2New">New password</label><input id="p2New" type="password" autocomplete="new-password" maxlength="100"></div>
+      <div class="field"><label for="p2New2">New password again</label><input id="p2New2" type="password" autocomplete="new-password" maxlength="100"></div>
+      <button class="btn" type="submit" id="p2Go">Change password</button>
+      <p class="note" id="p2Note" role="status"></p>
+    </form>
+  </details>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/js/portal.js" defer></script>
+</body>
+</html>
