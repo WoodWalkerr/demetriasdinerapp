@@ -1,4 +1,6 @@
+import crypto from 'node:crypto';
 import { route, BUILD } from '../lib/http.js';
+import { getStaff } from '../lib/auth.js';
 import { CURRENCY, catObject } from '../lib/menu.js';
 import { byCategory } from '../lib/staff/catalog.js';
 import { ensureSchema, sql, batch, settingsQuery, versionQuery, shapeSettings, qrReady, deliveryReady } from '../lib/db.js';
@@ -26,8 +28,27 @@ export default route(['GET'], async (req, res) => {
     if (!img) { res.setHeader('Cache-Control', 'public, max-age=60'); return res.status(404).json({ error: 'No photo.' }); }
     const immutable = String(req.query.v) === String(img.ver);
     res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=60');
+    if (immutable) res.setHeader('Vercel-CDN-Cache-Control', 'max-age=31536000'); // Vercel keeps it too: the database sends each photo once
     res.setHeader('Content-Type', img.mime);
     return res.status(200).send(Buffer.from(img.data, 'base64'));
+  }
+
+  // GET /api/menu?qr=gcash|maya&v=<fingerprint> → your payment QR image (kept by browsers and Vercel until you upload a new one)
+  if (req.query.qr) {
+    const wallet = req.query.qr === 'maya' ? 'maya' : 'gcash';
+    const [r] = await sql`SELECT qr_enabled, CASE WHEN ${wallet} = 'maya' THEN COALESCE(qr_maya->>'image', '') ELSE qr_image END AS img FROM settings WHERE id = 1`;
+    const m = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(r?.img || '');
+    if (!m) { res.setHeader('Cache-Control', 'public, max-age=60'); return res.status(404).json({ error: 'No QR.' }); }
+    if (!r.qr_enabled) { // switched off: only staff can see it (in Settings)
+      res.setHeader('Cache-Control', 'private, no-store');
+      if (!(await getStaff(req))) return res.status(404).json({ error: 'No QR.' });
+    } else {
+      const immutable = String(req.query.v) === crypto.createHash('md5').update(r.img).digest('hex').slice(0, 12);
+      res.setHeader('Cache-Control', immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=60');
+      if (immutable) res.setHeader('Vercel-CDN-Cache-Control', 'max-age=31536000');
+    }
+    res.setHeader('Content-Type', m[1]);
+    return res.status(200).send(Buffer.from(m[2], 'base64'));
   }
 
   if (req.query.sync) {

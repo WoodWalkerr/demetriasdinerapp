@@ -357,7 +357,7 @@
     const s = att.settings;
     if (!document.activeElement?.closest?.('#attSetBox')) {
       $('#asOn').checked = s.enabled; $('#asAfter').value = s.afterDeadline;
-      $('#asLoc').checked = s.requireLocation; $('#asRadius').value = s.radiusM; $('#asBlock').checked = s.blockOutside; $('#asNotes').value = s.guideNotes || '';
+      $('#asLoc').checked = s.requireLocation; $('#asRadius').value = s.radiusM; $('#asBlock').checked = s.blockOutside; if ($('#asNotes')) $('#asNotes').value = s.guideNotes || '';
     }
     const sh = att.shop;
     $('#asShop').innerHTML = sh ? `Shop location: <b>${sh.lat.toFixed(5)}, ${sh.lng.toFixed(5)}</b> ${sh.from === 'delivery' ? '(the store pin from Delivery settings)' : '(set here)'} · <a href="https://www.google.com/maps?q=${sh.lat},${sh.lng}" target="_blank" rel="noopener">check on the map</a>`
@@ -368,7 +368,7 @@
   const saveAttSettings = async (extra = {}) => {
     try {
       const r = await api('/api/staff/dtr', { method: 'PUT', body: { settings: { enabled: $('#asOn').checked, afterDeadline: $('#asAfter').value,
-        requireLocation: $('#asLoc').checked, radiusM: $('#asRadius').value, blockOutside: $('#asBlock').checked, guideNotes: $('#asNotes').value, ...extra } } });
+        requireLocation: $('#asLoc').checked, radiusM: $('#asRadius').value, blockOutside: $('#asBlock').checked, ...($('#asNotes') ? { guideNotes: $('#asNotes').value } : {}), ...extra } } });
       Object.assign(att, r); document.activeElement?.blur?.(); renderAttSettings(); renderAttToday(); toast('Attendance rules saved'); loadAttendance();
     } catch (err) { fail(err); }
   };

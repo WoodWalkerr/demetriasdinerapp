@@ -138,8 +138,10 @@
         <div class="pt-day-d"><b>${esc(fmtDate(x.date))}</b>${chip(x)}</div>
         <div class="pt-day-t"><span>${fmtTime(x.timeIn)} → ${fmtTime(x.timeOut)}</span><b>${x.workedMin != null ? hm(x.workedMin) : x.timeIn && !x.timeOut ? 'no time-out' : ''}</b></div>
         ${x.flags?.length ? `<small>${esc(x.flags.filter((f) => f !== 'No time-in').join(' · '))}</small>` : ''}</div>`).join('') || '<p class="hint">No days yet this month.</p>';
-    $('#gdOpen').hidden = !(d.enabled && s?.track);
-    if (d.enabled && s?.track && !d.mustChangePassword && !seen(guideKey()) && !$('#ntDlg').open) openGuide();
+    if ($('#gdDlg')) {
+      $('#gdOpen').hidden = !(d.enabled && s?.track);
+      if (d.enabled && s?.track && !d.mustChangePassword && !seen(guideKey()) && !$('#ntDlg').open) openGuide();
+    }
     renderSchedule();
     gpsWatch();
     clearInterval(tick); tick = setInterval(() => { renderClock(); if (data?.todayRow?.status === 'working') renderHours(); }, 1000); renderClock();
@@ -167,7 +169,7 @@
     // notifications
     $('#ptBellN').hidden = !m.unread; $('#ptBellN').textContent = m.unread;
     const unread = m.notifications.filter(n => !n.read), key = unread.map(n => n.id).join(',');
-    if (unread.length && key !== ntShownFor && !$('#ntDlg').open && !$('#gdDlg').open) { ntShownFor = key; openNotes(unread); }
+    if (unread.length && key !== ntShownFor && !$('#ntDlg').open && !$('#gdDlg')?.open) { ntShownFor = key; openNotes(unread); }
   }
   // ---------------------------------------------------------------- "How attendance works" (shown the first time, and again when the rules change)
   const guideKey = () => { const d = data, s = d.schedule, r = d.rules; const raw = JSON.stringify([s.start, s.end, s.deadline, s.graceMin, s.requiredHours, s.breakMin, r.afterDeadline, r.requireLocation, r.blockOutside, r.radiusM, r.guideNotes]);
@@ -194,9 +196,11 @@
     if (!$('#gdDlg').open) $('#gdDlg').showModal();
   }
   const closeGuide = () => { if (data) { try { localStorage.setItem(guideKey(), '1'); } catch {} } $('#gdDlg').close(); if (data) renderSchedule(); };
-  $('#gdOk').onclick = closeGuide; $('#gdClose').onclick = closeGuide;
-  $('#gdDlg').addEventListener('cancel', (e) => { e.preventDefault(); closeGuide(); });
-  $('#gdOpen').onclick = () => { if (data) openGuide(); };
+  if ($('#gdDlg')) { // (an old portal.html without the guide still works)
+    $('#gdOk').onclick = closeGuide; $('#gdClose').onclick = closeGuide;
+    $('#gdDlg').addEventListener('cancel', (e) => { e.preventDefault(); closeGuide(); });
+    $('#gdOpen').onclick = () => { if (data) openGuide(); };
+  }
   const addM = (t, mm) => { const x = (+t.slice(0, 2) * 60 + +t.slice(3) + (mm || 0)) % 1440; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
   function openNotes(list) {
     $('#ntTitle').textContent = list.some(n => !n.read) ? '🗓️ Schedule update' : '🔔 Notifications';
@@ -207,7 +211,7 @@
   $('#ntOk').onclick = markRead; $('#ntClose').onclick = markRead;
   $('#ptBell').onclick = () => { if (data?.mySchedule) openNotes(data.mySchedule.notifications); };
   document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { sView = b.dataset.sv; document.querySelectorAll('[data-sv]').forEach(x => x.setAttribute('aria-pressed', x === b)); renderSchedule(); });
-  setInterval(() => { if (me && !document.hidden && !$('#vHome').hidden && !busy) load(data?.month === data?.today?.slice(0, 7) ? undefined : data?.month); }, 60000); // new schedules show up without reloading
+  setInterval(() => { if (me && !document.hidden && !$('#vHome').hidden && !busy) load(data?.month === data?.today?.slice(0, 7) ? undefined : data?.month); }, 180000); // new schedules show up without reloading
 
   function renderClock() { $('#hClock').textContent = serverNow().toLocaleTimeString('en-PH', { timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit' }); }
   function renderHours() {
