@@ -61,6 +61,7 @@
 
   <section class="box pt-today" id="hToday">
     <div class="pt-today-top"><h2>Today</h2><span class="att-chip" id="tChip">…</span></div>
+    <button class="linkbtn pt-guide-btn" type="button" id="gdOpen">📘 How attendance works</button>
     <p class="hint" id="tSched"></p>
     <div class="pt-times">
       <div><span>Time in</span><b id="tIn">—</b><small id="tInLoc"></small></div>
@@ -106,6 +107,16 @@
     <div class="qr-head"><h3 id="ntTitle">🗓️ Schedule update</h3><button class="x" type="button" id="ntClose" aria-label="Close">×</button></div>
     <div id="ntList"></div>
     <button class="btn" type="button" id="ntOk">Got it</button>
+  </div>
+</dialog>
+
+<dialog id="gdDlg" class="gd-dlg" aria-labelledby="gdTitle">
+  <div class="dlg">
+    <div class="qr-head"><h3 id="gdTitle">📘 How attendance works</h3><button class="x" type="button" id="gdClose" aria-label="Close">×</button></div>
+    <p class="hint gd-sub" id="gdSub"></p>
+    <ol class="gd-list" id="gdList"></ol>
+    <div class="gd-notes" id="gdNotes" hidden></div>
+    <button class="btn" type="button" id="gdOk">Got it</button>
   </div>
 </dialog>
 

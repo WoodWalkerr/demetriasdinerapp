@@ -644,6 +644,8 @@
         <label class="switchrow" for="asBlock"><input type="checkbox" class="toggle" id="asBlock"> Refuse time in / out outside the area <small class="hint">(off: allowed, but flagged ⚠️ for you)</small></label>
         <p class="hint" id="asShop">Shop location: …</p>
         <div class="row-btns"><button class="btn ghost" type="button" id="asHere">📍 Use this device's location (stand inside the shop)</button><button class="linkbtn" type="button" id="asUseStore">Use the store pin from Delivery settings</button></div>
+        <div class="field" style="margin-top:12px"><label for="asNotes">📌 Reminders for employees <small class="hint">(one per line, up to 12. Shown in their "How attendance works" pop-up, which opens again for everyone when you change these.)</small></label>
+          <textarea id="asNotes" rows="4" maxlength="2400" placeholder="Wear your uniform and name tag&#10;Message the group chat if you'll be late&#10;No phones at the counter"></textarea></div>
         <div class="row-btns" style="margin-top:12px"><button class="btn" type="button" id="asSave">Save rules</button></div>
         <h4 class="tiers-h">Who records attendance</h4>
         <p class="hint" style="margin:4px 0 8px"><b>Track</b> off = this person doesn't time in / out (e.g. the owner). Their work schedule is in the <a href="#schedules">Schedules</a> tab.</p>
