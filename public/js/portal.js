@@ -211,7 +211,8 @@
   $('#ntOk').onclick = markRead; $('#ntClose').onclick = markRead;
   $('#ptBell').onclick = () => { if (data?.mySchedule) openNotes(data.mySchedule.notifications); };
   document.querySelectorAll('[data-sv]').forEach(b => b.onclick = () => { sView = b.dataset.sv; document.querySelectorAll('[data-sv]').forEach(x => x.setAttribute('aria-pressed', x === b)); renderSchedule(); });
-  setInterval(() => { if (me && !document.hidden && !$('#vHome').hidden && !busy) load(data?.month === data?.today?.slice(0, 7) ? undefined : data?.month); }, 180000); // new schedules show up without reloading
+  const shopAwake = () => { const W = data?.shop; if (!W) return true; const t = Date.now(); return W.some(w => t >= w.s - 30 * 60e3 && t < w.e + 30 * 60e3); }; // (30 min before opening / after closing)
+  setInterval(() => { if (me && !document.hidden && !$('#vHome').hidden && !busy && shopAwake()) load(data?.month === data?.today?.slice(0, 7) ? undefined : data?.month); }, 180000); // new schedules show up without reloading
 
   function renderClock() { $('#hClock').textContent = serverNow().toLocaleTimeString('en-PH', { timeZone: TZ, hour: 'numeric', minute: '2-digit', second: '2-digit' }); }
   function renderHours() {

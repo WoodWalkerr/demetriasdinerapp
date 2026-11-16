@@ -56,6 +56,7 @@
       </nav>
       <div class="top-actions">
         <a class="shift-pill" href="#shift" id="shiftPill"><i></i><span id="shiftPillT">No shift</span></a>
+        <button class="msg-btn pr-btn" type="button" id="prBtn" aria-label="Receipt printer" title="Receipt printer">🖨️<i id="prDot"></i></button>
         <button class="msg-btn" type="button" id="themeBtn" aria-label="Switch light or dark mode" title="Light / dark mode">🌙</button>
         <button class="msg-btn" type="button" id="msgBtn" aria-label="Customer messages">💬<b class="badge" id="msgBadge" hidden>0</b></button>
         <div class="user-menu">
@@ -849,8 +850,10 @@
     <div class="receipt" id="receipt"></div>
     <div class="no-print" id="rcptStamp"></div>
     <div class="dlg-foot no-print">
-      <button class="btn ghost" type="button" id="rcptPrint">Print</button>
-      <button class="btn" type="button" id="rcptNew">Done</button>
+      <button class="btn" type="button" id="rcptBt">🖨️ Print receipt</button>
+      <button class="btn ghost" type="button" id="rcptTicket">🧾 Kitchen ticket</button>
+      <button class="linkbtn" type="button" id="rcptPrint" title="Print with this computer's normal printer">Other printer…</button>
+      <button class="btn ghost" type="button" id="rcptNew">Done</button>
     </div>
   </div>
 </dialog>
@@ -894,6 +897,28 @@
   </form>
 </dialog>
 
+<dialog id="prDlg" class="pr-dlg" aria-labelledby="prTitle">
+  <div class="dlg">
+    <div class="sc-form-head"><h3 id="prTitle">🖨️ Receipt printer</h3><button class="x sm" type="button" id="prClose" aria-label="Close">×</button></div>
+    <div class="pr-status" id="prStatus"></div>
+    <div class="row-btns" id="prConnBtns"><button class="btn" type="button" id="prConnect">Connect printer</button><button class="btn ghost" type="button" id="prTest">Test print</button><button class="linkbtn bad" type="button" id="prForget">Forget printer</button></div>
+    <p class="hint" id="prHelp">Turn the printer on (and pair it in Bluetooth settings if it asks), then tap <b>Connect printer</b> and pick it from the list. Works in <b>Chrome or Edge</b> on Android, Windows and Mac. This device remembers it.</p>
+    <fieldset class="sc-set"><legend>Paper</legend>
+      <div class="chips" role="radiogroup" aria-label="Paper width"><button type="button" data-prw="58" aria-pressed="false">58 mm</button><button type="button" data-prw="80" aria-pressed="false">80 mm</button></div>
+      <label class="switchrow"><input type="checkbox" class="toggle" id="prLogo"> Print the logo</label>
+    </fieldset>
+    <fieldset class="sc-set"><legend>Print automatically on this device</legend>
+      <div class="field"><label for="prAutoNew">New online orders</label><select id="prAutoNew"><option value="off">Don't print</option><option value="ticket">Kitchen ticket</option><option value="receipt">Receipt</option><option value="both">Kitchen ticket + receipt</option></select></div>
+      <div class="field"><label for="prAutoPos">After a POS sale</label><select id="prAutoPos"><option value="off">Don't print (tap Print receipt)</option><option value="receipt">Receipt</option><option value="both">Receipt + kitchen ticket</option></select></div>
+      <div class="field"><label for="prCopies">Receipt copies</label><select id="prCopies"><option value="1">1</option><option value="2">2 (customer + shop)</option></select></div>
+      <p class="hint">Turn auto-print on for <b>one</b> device only (the one next to the printer), or orders print twice.</p>
+    </fieldset>
+    <div class="field"><label for="prFooter">Message at the bottom of the receipt <small class="hint">(optional, e.g. Wi-Fi password or your Facebook page)</small></label><textarea id="prFooter" rows="2" maxlength="200" placeholder="Wi-Fi: Demetrias / password: matcha2026"></textarea></div>
+    <div><label class="switchrow"><input type="checkbox" class="toggle" id="prSafe"> Safe mode</label><p class="hint" style="margin:2px 0 0">Slower. Turn on if receipts come out cut off or with strange letters.</p></div>
+    <p class="note" id="prNote" role="status"></p>
+  </div>
+</dialog>
+
 <dialog id="shiftDlg" aria-labelledby="sdTitle">
   <div class="dlg">
     <div class="qr-head no-print"><h3 id="sdTitle">Shift report</h3><button class="x" type="button" id="sdClose" aria-label="Close">×</button></div>
@@ -911,6 +936,7 @@
 
 <div class="chart-tip" id="tip" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/js/printer.js" defer></script>
 <script src="/js/staff.js" defer></script>
 </body>
 </html>

@@ -35,6 +35,13 @@ export default route(['GET', 'POST'], async (req, res) => {
   const b = req.method === 'POST' ? body(req) : {};
   const token = req.method === 'POST' ? b.token : req.query.token;
   if (typeof id !== 'string' || typeof token !== 'string' || !token) throw new HttpError(404, 'Order not found.');
+  if (req.method === 'GET' && req.query.since) {
+    // tracking refreshes every few seconds: a fingerprint of the order + its messages first (tiny), everything only when it changed
+    const [f] = await sql`SELECT md5(o::text || '|' || COALESCE((SELECT max(id) FROM messages m WHERE m.order_id = o.id), 0)::text || '|' ||
+        COALESCE((SELECT value FROM meta WHERE key = 'data_version'), '')) AS stamp, o.payment_status FROM orders o WHERE o.id = ${id} AND o.token = ${token}`;
+    if (!f) throw new HttpError(404, 'Order not found.');
+    if (f.stamp === req.query.since && f.payment_status !== 'pending') return res.status(200).json({ same: true, stamp: f.stamp, build: BUILD });
+  }
   let [o] = await sql`SELECT * FROM orders WHERE id = ${id} AND token = ${token}`;
   if (!o) throw new HttpError(404, 'Order not found.');
 
@@ -56,9 +63,11 @@ export default route(['GET', 'POST'], async (req, res) => {
 
 async function customerView(o) {
   const needQr = o.payment_method === 'qrph' && ['awaiting_proof', 'rejected'].includes(o.payment_status);
-  const [msgs, [v]] = await batch([
+  const [msgs, [v], [f]] = await batch([
     sql`SELECT sender, body, created_at FROM messages WHERE order_id = ${o.id} ORDER BY id DESC LIMIT 40`,
     versionQuery(),
+    sql`SELECT md5(o::text || '|' || COALESCE((SELECT max(id) FROM messages m WHERE m.order_id = o.id), 0)::text || '|' ||
+        COALESCE((SELECT value FROM meta WHERE key = 'data_version'), '')) AS stamp FROM orders o WHERE o.id = ${o.id}`,
   ]);
   return {
     id: o.id, code: o.code, status: o.status, totalCents: o.total_cents, deliveryFeeCents: o.delivery_fee_cents || 0,
@@ -70,7 +79,7 @@ async function customerView(o) {
     checkoutUrl: o.payment_status === 'pending' ? o.checkout_url : null,
     qr: needQr ? qrPublic(await getSettings()) : null,
     messages: msgs.reverse().map((m) => ({ from: m.sender, body: m.body, at: m.created_at })),
-    v: v?.value || '1', build: BUILD,
+    v: v?.value || '1', build: BUILD, stamp: f?.stamp || '',
   };
 }
 

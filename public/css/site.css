@@ -1441,3 +1441,21 @@ body.sees-cost .field.cost-col{display:grid}
 #pyKpis{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
 #pyKpis .att-kpi b{font-size:clamp(18px,2.2vw,24px);overflow-wrap:anywhere}
 .pay-top .btn,#view-schedules .view-head .btn,#view-schedules .row-btns .btn{white-space:nowrap}
+
+/* ================= Bluetooth receipt printer ================= */
+.pr-btn{position:relative}
+.pr-btn[hidden]{display:none}
+.pr-btn i{position:absolute;right:3px;bottom:3px;width:9px;height:9px;border-radius:50%;border:2px solid var(--card);display:none}
+.pr-btn i.on{display:block;background:#2E9E4F}
+.pr-btn i.off{display:block;background:var(--muted)}
+.pr-dlg{width:min(480px,calc(100% - 24px))}
+.pr-dlg .dlg{gap:12px;padding:18px;max-height:calc(100dvh - 32px);overflow:auto;box-sizing:border-box}
+.pr-dlg h3{margin:0;font-size:20px}
+.pr-status{padding:10px 12px;border-radius:12px;background:var(--surface);font-size:14px}
+.pr-ok{color:#2E9E4F}.pr-off{color:var(--muted)}
+.pr-dlg .field{margin:0}
+.pr-dlg fieldset .field+.field{margin-top:8px}
+.pr-dlg .chips{display:flex;gap:6px;margin-bottom:8px}
+.pr-dlg textarea{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;resize:vertical}
+.pr-dlg .note{margin:0}
+#rcptDlg .dlg-foot{flex-wrap:wrap;gap:8px}

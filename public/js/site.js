@@ -1202,7 +1202,9 @@
     const live = mine.filter(isLive);
     await Promise.all(live.map(async o => {
       try {
-        const s = await api(`/api/orders/${encodeURIComponent(o.id)}?token=${encodeURIComponent(o.token)}`);
+        const s = await api(`/api/orders/${encodeURIComponent(o.id)}?token=${encodeURIComponent(o.token)}${o.stamp ? `&since=${encodeURIComponent(o.stamp)}` : ''}`);
+        if (s.same) { checkBuild(s.build); return; } // nothing changed (a tiny answer)
+        o.stamp = s.stamp;
         const before = (o.messages || []).length;
         Object.assign(o, { code: s.code, status: s.status, items: s.items, totalCents: s.totalCents, deliveryFeeCents: s.deliveryFeeCents, orderType: s.orderType,
           discountCents: s.discountCents, promoCode: s.promoCode, scheduledFor: s.scheduledFor, stampPhone: s.stampPhone, stampable: s.stampable,
@@ -1491,7 +1493,8 @@
       if (s.v !== cat.v) await loadMenu();
     } catch {}
   }
-  setInterval(() => { if (!document.hidden) { sync(); maybeReload(); } }, 15000);
+  let syncN = 0; // while closed, check every 5 minutes instead of every 15 s (lets the database sleep at night)
+  setInterval(() => { syncN++; if (!document.hidden && (openNow().open || syncN % 20 === 0)) { sync(); maybeReload(); } }, 15000);
 
   // Back from PayMongo: /?order=<id>&t=<token>&paid=1 | &cancelled=1
   (function handleReturn() {

@@ -154,7 +154,14 @@
 
   // ===================================================================== state
   let me = null, perms = new Set(), settings = null, catalog = { products: [], addons: [] };
-  let board = null, seen = null, seenMsgs = null, timer = null;
+  let board = null, seen = null, seenMsgs = null, timer = null, lastTouch = Date.now(), lastChange = Date.now(), resting = false;
+  // Closed hours: while the shop is closed (plus 20 minutes before opening / after closing) and nobody is using the
+  // screen, the app stops asking the server, so the database can sleep (saves its monthly compute hours).
+  // Any tap, or coming back to the tab, checks again right away.
+  const PREP = 20 * 60e3;
+  const shopAwake = () => { const W = board?.shop; if (W === undefined || W === null) return true; const t = Date.now(); return W.some(w => t >= w.s - PREP && t < w.e + PREP); };
+  const nextOpening = () => (board?.shop || []).map(w => w.s - PREP).find(x => x > Date.now());
+  ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { lastTouch = Date.now(); if (resting) wakeBoard(); }, { passive: true }));
   const busy = new Set();
   const cache = new Map();
   const remember = (list) => list.forEach(o => cache.set(o.id, o));
@@ -162,7 +169,7 @@
 
   // ===================================================================== auth
   function showLogin() {
-    clearInterval(timer); timer = null; me = null;
+    clearTimeout(timer); timer = null; me = null;
     $('#app').hidden = true; $('#loginView').hidden = false; setTimeout(() => $('#uname').focus(), 50);
   }
   function setMe(d) {
@@ -192,7 +199,9 @@
     await Promise.all([loadCatalog(), loadSettings()]);
     route();
     await refreshBoard();
-    clearInterval(timer); timer = setInterval(() => { if (!document.hidden) refreshBoard(); }, 4000);
+    // every 4 s while people are using it or orders are moving; every 15 s after 5 quiet minutes (nights, slow hours)
+    clearTimeout(timer);
+    timer = setTimeout(boardTick, 4000);
     checkMilestones();
   }
   $('#loginForm').addEventListener('submit', async (e) => {
@@ -662,15 +671,34 @@
   }
 
   // ===================================================================== BOARD
+  async function boardTick() {
+    if (!me) return;
+    const quiet = Date.now() - Math.max(lastTouch, lastChange) > 5 * 60e3;
+    if (quiet && !shopAwake()) { // closed and nobody around: rest until shortly before opening
+      const nx = nextOpening(), wait = nx ? Math.max(60e3, nx - Date.now()) : 60 * 60e3;
+      resting = true;
+      $('#syncNote').classList.remove('err');
+      $('#syncNote').textContent = `😴 Closed. Resting until ${nx ? fmtTime(nx) : 'opening'} to save data. Tap anywhere to check now.`;
+      clearTimeout(timer); timer = setTimeout(() => { resting = false; boardTick(); }, Math.min(wait, 2 ** 31 - 1));
+      return;
+    }
+    resting = false;
+    if (!document.hidden) await refreshBoard();
+    clearTimeout(timer); timer = setTimeout(boardTick, quiet ? 15000 : 4000);
+  }
+  function wakeBoard() { resting = false; clearTimeout(timer); boardTick(); }
   async function refreshBoard() {
     try {
-      board = await api('/api/staff/orders');
+      // send the last fingerprint: when nothing changed, the server answers "same" (tiny) instead of the whole board
+      const r = await api('/api/staff/orders' + (board?.stamp ? `?since=${encodeURIComponent(board.stamp)}` : ''));
+      if (r.same && board) Object.assign(board, { shiftOpen: r.shiftOpen, serverTime: r.serverTime, build: r.build }); else { board = r; lastChange = Date.now(); }
       remember(board.open); remember(board.finished);
       const fresh = seen ? board.open.filter(o => !seen.has(o.id) && o.status === 'new') : [];
       // Don't announce a POS sale on the screen of the cashier who rang it up.
       const loud = fresh.filter(o => !(o.source === 'pos' && o.staffName === me?.user?.name));
       if (fresh.length) toast(`New order #${fresh[0].code} from ${fresh[0].name}`);
       if (loud.length) announce(loud.length > 1 ? `${loud.length} new orders! New orders!` : 'New order! New order!');
+      if (P && P.settings.autoNew !== 'off') for (const o of loud) autoPrint(o, P.settings.autoNew);
       seen = new Set([...(seen || []), ...board.open.map(o => o.id)]);
       const unread = board.threads.reduce((a, t) => a + t.unread, 0);
       const msgKey = board.threads.map(t => t.id + ':' + t.lastAt).join('|');
@@ -935,9 +963,10 @@
       ${o.note ? `<div class="nt" style="background:var(--surface);padding:10px 12px;border-radius:10px">“${esc(o.note)}”</div>` : ''}
       ${o.deliveryFeeCents ? `<div class="r2"><span>Delivery fee</span><span>${money(o.deliveryFeeCents)}</span></div>` : ''}
       <div class="total">Total <span>${money(o.totalCents)}</span></div>
-      <div class="row-btns"><button class="btn ghost" type="button" data-chat="${esc(o.id)}">💬 Messages${o.unread ? ` (${o.unread})` : ''}</button>${o.paymentStatus === 'paid' ? `<button class="btn ghost" type="button" id="dReceipt">Receipt</button>` : ''}</div>
+      <div class="row-btns"><button class="btn ghost" type="button" data-chat="${esc(o.id)}">💬 Messages${o.unread ? ` (${o.unread})` : ''}</button>${o.paymentStatus === 'paid' ? `<button class="btn ghost" type="button" id="dReceipt">Receipt</button>` : ''}<button class="btn ghost" type="button" id="dTicket">🧾 Ticket</button></div>
       ${stampBox(o)}`;
     const rb = $('#dReceipt'); if (rb) rb.onclick = () => showReceipt(o);
+    $('#dTicket').onclick = () => btPrint(o, 'ticket');
     const acts = [], nx = NEXT(o);
     const onBoard = qr ? o.paymentStatus === 'paid' : !online || ['paid', 'refunded'].includes(o.paymentStatus);
     if (qr && o.paymentStatus === 'submitted' && o.status !== 'cancelled') {
@@ -1246,9 +1275,11 @@
         promoCode: posCode?.code, customKind: $('#posCustKind').value, customValue: $('#posCustVal').value, discountReason: $('#posCustWhy').value,
       } });
       cache.set(o.id, o); posBusy = false; resetTicket(); showReceipt(o); refreshBoard(); loadCatalog();
+      if (P && P.settings.autoPos !== 'off') autoPrint(o, P.settings.autoPos === 'both' ? 'both' : 'receipt');
     } catch (err) { posBusy = false; updateCharge(); fail(err); $('#posNote').textContent = err.message; if (err.status === 409) { refreshMe(); loadCatalog(); } }
   });
   function showReceipt(o) {
+    rcptOrder = o;
     $('#receipt').innerHTML = `
       <h3 id="rcptTitle">Demetria's Diner</h3>
       <p class="c">Come for the drinks, stay for the comfort<br>${fmtDT(o.paidAt || o.createdAt)} · #${esc(o.code)}<br>${esc(o.source === 'pos' ? o.pickupLabel : o.orderType)}${o.name && o.name !== 'Walk-in' ? ' · ' + esc(o.name) : ''}${o.staffName ? '<br>Cashier: ' + esc(o.staffName) : ''}</p><hr>
@@ -1266,6 +1297,69 @@
   }
   const printDialog = (dlg) => { document.body.classList.add('printing'); dlg.classList.add('print-me'); window.print(); setTimeout(() => { document.body.classList.remove('printing'); dlg.classList.remove('print-me'); }, 500); };
   $('#rcptPrint').onclick = () => printDialog($('#rcptDlg'));
+  // ---------------------------------------------------------------- Bluetooth receipt printer (public/js/printer.js)
+  const P = window.DDPrinter;
+  let rcptOrder = null;
+  /** Print a receipt / kitchen ticket. Quiet = auto-print (a short toast instead of opening the printer window). */
+  async function btPrint(o, what, quiet = false) {
+    if (!P) return toast('Printer support did not load. Refresh the page.');
+    try {
+      const copies = what === 'receipt' ? +P.settings.copies || 1 : 1;
+      await P.print(what === 'receipt' ? await P.receipt(o) : await P.ticket(o), copies);
+      if (!quiet) toast(what === 'receipt' ? `🖨️ Receipt #${o.code} printed` : `🧾 Ticket #${o.code} printed`);
+      return true;
+    } catch (err) {
+      if (quiet) toast(`🖨️ #${o.code} didn't print: ${err.message}`);
+      else if (err.code === 'NOT_CONNECTED') { openPrinter(); $('#prNote').textContent = 'Connect the printer, then try again.'; }
+      else toast(`🖨️ ${err.message}`);
+      return false;
+    }
+  }
+  const printed = (() => { let s; try { s = new Set(JSON.parse(localStorage.getItem('dd-printed') || '[]')); } catch { s = new Set(); }
+    return { has: (id) => s.has(id), add: (id) => { s.add(id); try { localStorage.setItem('dd-printed', JSON.stringify([...s].slice(-300))); } catch {} } }; })();
+  async function autoPrint(o, mode) {
+    if (!P || !mode || mode === 'off' || printed.has(o.id + ':' + mode)) return;
+    printed.add(o.id + ':' + mode);
+    if (mode === 'ticket' || mode === 'both') await btPrint(o, 'ticket', true);
+    if (mode === 'receipt' || mode === 'both') await btPrint(o, 'receipt', true);
+  }
+  function renderPrinter() {
+    if (!P) return;
+    const st = P.settings, on = P.connected;
+    $('#prDot').className = on ? 'on' : P.remembered ? 'off' : '';
+    $('#prBtn').title = on ? `Printer: ${st.name} (connected)` : P.remembered ? `Printer: ${st.name} (not connected)` : 'Set up a receipt printer';
+    $('#prStatus').innerHTML = !P.supported ? '<b class="warn-t">This browser can\'t use Bluetooth printers.</b> Use <b>Chrome</b> or <b>Edge</b> on Android, Windows or Mac. (iPhone / iPad can still use "Other printer…" on the receipt.)'
+      : on ? `<span class="pr-ok">●</span> Connected to <b>${esc(st.name)}</b>` : P.remembered ? `<span class="pr-off">●</span> <b>${esc(st.name)}</b>, not connected right now. It reconnects when you print, or tap Connect.` : 'No printer yet.';
+    $('#prConnect').textContent = P.remembered ? (on ? 'Change printer' : 'Connect') : 'Connect printer';
+    $('#prConnect').disabled = !P.supported; $('#prTest').hidden = !P.remembered; $('#prForget').hidden = !P.remembered;
+    $$('[data-prw]').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.prw === +st.width)));
+    $('#prLogo').checked = st.logo; $('#prAutoNew').value = st.autoNew; $('#prAutoPos').value = st.autoPos; $('#prCopies').value = String(st.copies); $('#prSafe').checked = st.safe;
+    if (document.activeElement !== $('#prFooter')) $('#prFooter').value = st.footer;
+  }
+  function openPrinter() { renderPrinter(); $('#prNote').textContent = ''; $('#prNote').classList.remove('err'); if (!$('#prDlg').open) $('#prDlg').showModal(); }
+  if (P) {
+    P.on(renderPrinter); renderPrinter();
+    $('#prBtn').onclick = openPrinter;
+    $('#prClose').onclick = () => $('#prDlg').close();
+    $('#prConnect').onclick = async () => {
+      const n = $('#prNote'); n.classList.remove('err'); n.textContent = 'Choose your printer in the list…';
+      try { if (P.connected || !(await P.reconnect())) await P.connect(); n.textContent = `✓ Connected to ${P.name}. Tap Test print.`; }
+      catch (err) { n.textContent = err.name === 'NotFoundError' ? 'No printer chosen.' : err.message; if (err.name !== 'NotFoundError') n.classList.add('err'); }
+    };
+    $('#prTest').onclick = async () => { const n = $('#prNote'); n.classList.remove('err'); n.textContent = 'Printing…';
+      try { await P.print(await P.test()); n.textContent = '✓ Sent. Check the paper.'; } catch (err) { n.textContent = err.message; n.classList.add('err'); } };
+    $('#prForget').onclick = () => { if (confirm(`Forget ${P.name}? You'll need to connect it again.`)) P.forget(); };
+    $$('[data-prw]').forEach(b => b.onclick = () => P.set({ width: +b.dataset.prw }));
+    $('#prLogo').onchange = () => P.set({ logo: $('#prLogo').checked });
+    $('#prAutoNew').onchange = () => P.set({ autoNew: $('#prAutoNew').value });
+    $('#prAutoPos').onchange = () => P.set({ autoPos: $('#prAutoPos').value });
+    $('#prCopies').onchange = () => P.set({ copies: +$('#prCopies').value });
+    $('#prSafe').onchange = () => P.set({ safe: $('#prSafe').checked });
+    $('#prFooter').onchange = () => P.set({ footer: $('#prFooter').value.trim() });
+    P.reconnect().catch(() => {}); // a printer chosen before reconnects by itself when the browser allows it
+  } else $('#prBtn').hidden = true;
+  $('#rcptBt').onclick = () => rcptOrder && btPrint(rcptOrder, 'receipt');
+  $('#rcptTicket').onclick = () => rcptOrder && btPrint(rcptOrder, 'ticket');
   $('#rcptNew').onclick = () => $('#rcptDlg').close();
 
   // ===================================================================== ORDERS (history)
@@ -1651,7 +1745,7 @@
     if (onDashboard) ls.set('dd-ach-' + me.user.id, [...seen, ...list.map(a => a.id)].slice(-200));
   }
   async function checkMilestones() {
-    if (!can('sales') || document.hidden) return;
+    if (!can('sales') || document.hidden || resting || !shopAwake()) return;
     try { const d = await api('/api/staff/dashboard?lite=1'); seeAchievements(d.achievements, !$('#view-sales').hidden); } catch {}
   }
   setInterval(checkMilestones, 60000);
@@ -2369,7 +2463,7 @@
     if (busyNow && !document.hidden) return;
     location.reload(); // POS ticket is saved and comes back after the reload
   }
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && me) refreshBoard(); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && me) { if (resting) { lastTouch = Date.now(); wakeBoard(); } else refreshBoard(); } });
 
   setInterval(renderBoard, 30000); // keep "in X min" fresh
   api('/api/staff/login').then(d => d.signedIn ? showApp(d) : showLogin()).catch(showLogin);
