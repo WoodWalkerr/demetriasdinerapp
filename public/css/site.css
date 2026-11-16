@@ -1459,3 +1459,10 @@ body.sees-cost .field.cost-col{display:grid}
 .pr-dlg textarea{width:100%;box-sizing:border-box;padding:10px 12px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink);font:inherit;resize:vertical}
 .pr-dlg .note{margin:0}
 #rcptDlg .dlg-foot{flex-wrap:wrap;gap:8px}
+
+/* POS: notes for the barista / kitchen */
+.item-note{display:block;color:var(--ink);font-weight:600;font-size:12.5px;background:color-mix(in srgb,var(--warn,#E2A400) 16%,transparent);border-radius:6px;padding:2px 6px;margin-top:3px;width:fit-content}
+.pos .line .item-note,#posLines .item-note{grid-column:1/-1}
+.pd-note-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.pd-note-chips button{font-size:12.5px;padding:5px 10px}
+#pdNote,#posNote{width:100%;box-sizing:border-box}

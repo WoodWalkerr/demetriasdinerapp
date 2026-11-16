@@ -163,6 +163,7 @@
       doc.bold(true).lr(`${i.qty} x ${i.name}`, peso(i.unitCents * i.qty)).bold(false);
       if (i.opts) doc.lr(i.opts, '', 2);
       for (const a of i.addons || []) doc.lr(`+ ${a.name}`, a.cents ? peso(a.cents * i.qty) : '', 2);
+      if (i.note) doc.lr(`Note: ${i.note}`, '', 2);
       if (i.promo) doc.lr(`${i.promo.name}`, `-${peso(i.promo.offCents * (i.qty || 1)).replace('-', '')}`, 2);
     }
     doc.rule();
@@ -193,6 +194,7 @@
       doc.bold(true).size(1, 2).line(`${i.qty} x ${i.name}`).size(1).bold(false);
       if (i.opts) doc.line(`   ${i.opts}`);
       for (const a of i.addons || []) doc.line(`   + ${a.name}`);
+      if (i.note) doc.bold(true).line(`   >> ${i.note}`).bold(false);
     }
     if (o.note) doc.rule().bold(true).line('NOTE:').bold(false).line(o.note);
     if (o.delivery) { doc.rule().bold(true).line('DELIVER TO:').bold(false).line(o.delivery.address || ''); if (o.delivery.landmark) doc.line(o.delivery.landmark); if (o.delivery.phone) doc.line(o.delivery.phone); }

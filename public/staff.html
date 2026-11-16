@@ -122,6 +122,7 @@
           <div class="field"><label for="posName">Customer</label><input id="posName" maxlength="40" placeholder="Walk-in"></div>
           <div class="field"><label for="posType">Type</label><select id="posType"><option value="dine-in">Dine-in</option><option value="takeout">Takeout</option></select></div>
         </div>
+        <div class="field"><label for="posNote">📝 Note for kitchen / barista <small class="hint">(whole order)</small></label><input id="posNote" maxlength="200" placeholder="e.g. Serve together, birthday, table 4" autocomplete="off"></div>
         <div class="row2">
           <div class="field"><label for="posDisc">Discount</label>
             <select id="posDisc"><option value="">None</option><option value="senior">Senior citizen 20%</option><option value="pwd">PWD 20%</option><option value="staff">Staff 10%</option><option value="code">Promo code…</option><option value="custom" data-perm-opt="discounts">Custom discount…</option></select></div>
@@ -778,6 +779,9 @@
       <input type="radio" name="ice" id="pi2" value="Regular ice" checked><label for="pi2">Regular</label>
       <input type="radio" name="ice" id="pi3" value="Extra ice"><label for="pi3">Extra</label></div></div>
     <div id="pdAddons"></div>
+    <div class="grp"><h4>Note for the barista / kitchen <small class="hint">(this item)</small></h4>
+      <input id="pdNote" maxlength="80" placeholder="e.g. Extra hot, no straw" autocomplete="off">
+      <div class="chips pd-note-chips" id="pdNoteChips"></div></div>
     <div class="dlg-foot">
       <div class="stepper"><button type="button" id="pdMinus" aria-label="Fewer">−</button><span id="pdQty">1</span><button type="button" id="pdPlus" aria-label="More">+</button></div>
       <div style="display:flex;gap:8px"><button class="btn ghost" value="cancel" type="submit" formnovalidate>Cancel</button><button class="btn" type="button" id="pdAdd">Add</button></div>

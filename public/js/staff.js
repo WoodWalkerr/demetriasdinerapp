@@ -149,7 +149,7 @@
     return `<span class="pay-badge">${o.source === 'pos' ? 'POS · ' : ''}${esc(parts)} <span class="pill ${o.paymentStatus}">${PAYST[o.paymentStatus] || o.paymentStatus}</span></span>`;
   };
   const promoTag = (i) => (i.promo ? `<small class="promo-t">${esc(i.promo.name)} −${money(i.promo.offCents)}${i.qty > 1 ? ' each' : ''}</small>` : '');
-  const itemLine = (i) => `${i.qty} × ${esc(i.name)}${i.opts ? `<small>${esc(i.opts)}</small>` : ''}${promoTag(i)}${(i.addons || []).length ? `<small class="adds">+ ${i.addons.map(a => esc(a.name)).join(', ')}</small>` : ''}`;
+  const itemLine = (i) => `${i.qty} × ${esc(i.name)}${i.opts ? `<small>${esc(i.opts)}</small>` : ''}${promoTag(i)}${(i.addons || []).length ? `<small class="adds">+ ${i.addons.map(a => esc(a.name)).join(', ')}</small>` : ''}${i.note ? `<small class="item-note">📝 ${esc(i.note)}</small>` : ''}`;
   const itemsText = (o) => o.items.map(i => `${i.qty}× ${esc(i.name)}${(i.addons || []).length ? ' +' + i.addons.length : ''}`).join(', ');
 
   // ===================================================================== state
@@ -959,7 +959,7 @@
         ${o.paymentId ? `<dt>PayMongo ID</dt><dd class="mono">${esc(o.paymentId)}</dd>` : ''}
         ${o.refundId ? `<dt>Refund ID</dt><dd class="mono">${esc(o.refundId)}</dd>` : ''}
       </dl>
-      <div class="d-items">${o.items.map(i => `<div><b>${i.qty} × ${esc(i.name)}</b><span>${money(i.unitCents * i.qty)}</span>${i.opts ? `<small>${esc(i.opts)}</small>` : ''}${promoTag(i)}${(i.addons || []).map(a => `<small>+ ${esc(a.name)} (${money(a.cents)} each)</small>`).join('')}</div>`).join('')}</div>
+      <div class="d-items">${o.items.map(i => `<div><b>${i.qty} × ${esc(i.name)}</b><span>${money(i.unitCents * i.qty)}</span>${i.opts ? `<small>${esc(i.opts)}</small>` : ''}${promoTag(i)}${(i.addons || []).map(a => `<small>+ ${esc(a.name)} (${money(a.cents)} each)</small>`).join('')}${i.note ? `<small class="item-note">📝 ${esc(i.note)}</small>` : ''}</div>`).join('')}</div>
       ${o.note ? `<div class="nt" style="background:var(--surface);padding:10px 12px;border-radius:10px">“${esc(o.note)}”</div>` : ''}
       ${o.deliveryFeeCents ? `<div class="r2"><span>Delivery fee</span><span>${money(o.deliveryFeeCents)}</span></div>` : ''}
       <div class="total">Total <span>${money(o.totalCents)}</span></div>
@@ -1145,17 +1145,22 @@
     $('#pd-sweet').hidden = !drink; $('#pd-ice').hidden = !drink || p.hot;
     const groups = groupsFor(p.cat).map(g => [g, catalog.addons.filter(a => a.grp === g && a.active)]).filter(([, l]) => l.length);
     $('#pdAddons').innerHTML = groups.map(([g, l]) => `<div class="grp grp-addons"><h4>${g === 'packaging' ? 'Packaging' : 'Add-ons'}</h4><div class="seg">${l.map(a => `<input type="checkbox" name="addon" id="pa-${a.id}" value="${a.id}"><label for="pa-${a.id}">${esc(a.name)} <small>+${money(a.price)}</small></label>`).join('')}</div></div>`).join('');
+    const chips = drink ? ['Extra hot', 'No straw', 'Separate cup', 'Less sweet foam'] : ['Sauce on the side', 'No onions', 'Extra spicy', 'Cut in half'];
+    $('#pdNote').value = ''; $('#pdNoteChips').innerHTML = chips.map(c => `<button type="button" data-pdn="${esc(c)}">${esc(c)}</button>`).join('');
     pdRefresh(); $('#posDlg').showModal();
   });
+  $('#pdNoteChips').addEventListener('click', e => { const b = e.target.closest('[data-pdn]'); if (!b) return; const n = $('#pdNote'), v = n.value.trim();
+    if (!v.toLowerCase().includes(b.dataset.pdn.toLowerCase())) n.value = (v ? v + ', ' : '') + b.dataset.pdn; n.focus(); });
   const pdRead = () => { const f = $('#pdForm'); const drink = kindOf(pdItem.cat) === 'drink'; return { opts: drink ? { sweet: +f.sweet.value, ice: pdItem.hot ? null : f.ice.value } : null, addons: $$('input[name=addon]:checked', f).map(x => x.value) }; };
   const pdRefresh = () => { const v = pdRead(); $('#pdQty').textContent = pdQty; $('#pdAdd').textContent = 'Add ' + money(posUnit({ id: pdItem.id, addons: v.addons }) * pdQty); };
   $('#pdForm').addEventListener('change', pdRefresh);
   $('#pdMinus').onclick = () => { pdQty = Math.max(1, pdQty - 1); pdRefresh(); };
   $('#pdPlus').onclick = () => { pdQty = Math.min(50, pdQty + 1); pdRefresh(); };
   $('#pdAdd').onclick = () => {
-    const v = pdRead(); const key = pdItem.id + '|' + JSON.stringify(v.opts) + '|' + [...v.addons].sort().join(',');
+    const v = pdRead(), note = $('#pdNote').value.trim().slice(0, 80);
+    const key = pdItem.id + '|' + JSON.stringify(v.opts) + '|' + [...v.addons].sort().join(',') + '|' + note.toLowerCase(); // a different note = its own line
     const ex = ticketLines.find(l => l.key === key);
-    if (ex) ex.qty = Math.min(50, ex.qty + pdQty); else ticketLines.push({ key, id: pdItem.id, qty: pdQty, opts: v.opts, addons: v.addons });
+    if (ex) ex.qty = Math.min(50, ex.qty + pdQty); else ticketLines.push({ key, id: pdItem.id, qty: pdQty, opts: v.opts, addons: v.addons, ...(note ? { note } : {}) });
     $('#posDlg').close(); renderTicket();
   };
   const posPay = payPanel($('#posPay'), () => posTotals().total, () => updateCharge());
@@ -1201,7 +1206,7 @@
       <div class="line"><b>${esc(P[l.id]?.name || l.id)}</b><span class="lp">${save ? `<s>${money(full)}</s> ${money(full - save)}` : money(full)}</span>
         <small>${esc(l.opts ? [l.opts.sweet + '% sweet', l.opts.ice].filter(Boolean).join(' · ') : '') || '—'}${dl ? `<br><b class="deal-t">🎉 ${esc(dl.title)}${save ? ` −${money(save)}` : ''}</b>` : ''}</small>
         <div class="stepper"><button type="button" data-tq="${i}" data-d="-1" aria-label="Fewer">−</button><span>${l.qty}</span><button type="button" data-tq="${i}" data-d="1" aria-label="More">+</button></div>
-        ${(l.addons || []).length ? `<span class="addons">+ ${l.addons.map(id => `${esc(A[id]?.name || id)} ${money(A[id]?.price || 0)}`).join(', ')}</span>` : ''}</div>`; }).join('')
+        ${(l.addons || []).length ? `<span class="addons">+ ${l.addons.map(id => `${esc(A[id]?.name || id)} ${money(A[id]?.price || 0)}`).join(', ')}</span>` : ''}${l.note ? `<span class="item-note">📝 ${esc(l.note)}</span>` : ''}</div>`; }).join('')
       : '<div class="empty">Tap items on the left to start a sale.</div>';
     const t = posTotals(), d = $('#posDisc').value;
     $('#posDiscIdF').hidden = !(d === 'senior' || d === 'pwd');
@@ -1268,7 +1273,8 @@
     posBusy = true; updateCharge();
     try {
       const o = await api('/api/staff/pos', { method: 'POST', body: {
-        items: ticketLines.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons, ...(l.upsell ? { upsell: true } : {}) })),
+        items: ticketLines.map(l => ({ id: l.id, qty: l.qty, opts: l.opts, addons: l.addons, ...(l.upsell ? { upsell: true } : {}), ...(l.note ? { note: l.note } : {}) })),
+        note: $('#posNote').value,
         loyaltyPhone: posStamp.card ? posStamp.card.phone : undefined, loyaltyRedeem: !!(posStamp.redeem && posStamp.card?.ready),
         name: $('#posName').value, orderType: $('#posType').value, payments: v.payments, tenderedCents: v.tenderedCents,
         discount: $('#posDisc').value || undefined, discountId: $('#posDiscId').value, sendToBoard: $('#posBoard').checked,
@@ -1283,7 +1289,7 @@
     $('#receipt').innerHTML = `
       <h3 id="rcptTitle">Demetria's Diner</h3>
       <p class="c">Come for the drinks, stay for the comfort<br>${fmtDT(o.paidAt || o.createdAt)} · #${esc(o.code)}<br>${esc(o.source === 'pos' ? o.pickupLabel : o.orderType)}${o.name && o.name !== 'Walk-in' ? ' · ' + esc(o.name) : ''}${o.staffName ? '<br>Cashier: ' + esc(o.staffName) : ''}</p><hr>
-      ${o.items.map(i => `<div class="r"><span>${i.qty} × ${esc(i.name)}${i.opts ? `<small>${esc(i.opts)}</small>` : ''}${promoTag(i)}${(i.addons || []).map(a => `<small>+ ${esc(a.name)} ${money(a.cents)}</small>`).join('')}</span><span>${money(i.unitCents * i.qty)}</span></div>`).join('')}<hr>
+      ${o.items.map(i => `<div class="r"><span>${i.qty} × ${esc(i.name)}${i.opts ? `<small>${esc(i.opts)}</small>` : ''}${promoTag(i)}${(i.addons || []).map(a => `<small>+ ${esc(a.name)} ${money(a.cents)}</small>`).join('')}${i.note ? `<small>📝 ${esc(i.note)}</small>` : ''}</span><span>${money(i.unitCents * i.qty)}</span></div>`).join('')}<hr>
       <div class="r"><span>Subtotal</span><span>${money(o.subtotalCents)}</span></div>
       ${o.discountCents ? `<div class="r"><span>${esc(o.discountType)}</span><span>−${money(o.discountCents)}</span></div>` : ''}
       ${o.deliveryFeeCents ? `<div class="r"><span>Delivery fee</span><span>${money(o.deliveryFeeCents)}</span></div>` : ''}
